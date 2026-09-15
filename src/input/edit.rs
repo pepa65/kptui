@@ -260,7 +260,9 @@ fn delete_current_entry(app: &mut App) {
 		}
 	}
 
-	if let Some(idx) = app.edit_target && idx < app.entries.len() {
+	if let Some(idx) = app.edit_target
+		&& idx < app.entries.len()
+	{
 		app.entries.remove(idx);
 	}
 

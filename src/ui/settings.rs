@@ -177,9 +177,7 @@ fn draw_change_password(frame: &mut Frame, app: &mut App) {
 
 	let default_hint = match app.password_change_step {
 		crate::app::PasswordChangeStep::Current => "verify current master password",
-		crate::app::PasswordChangeStep::New | crate::app::PasswordChangeStep::ConfirmNew => {
-			"this re-encrypts your database file with the new password"
-		}
+		crate::app::PasswordChangeStep::New | crate::app::PasswordChangeStep::ConfirmNew => "this re-encrypts your database file with the new password",
 	};
 	let hint_text = app.status.clone().unwrap_or_else(|| default_hint.to_string());
 	let hint_style = if app.status.is_some() { Style::new().fg(app.theme.error) } else { Style::new().fg(app.theme.warning) };

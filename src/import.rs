@@ -85,7 +85,9 @@ pub fn import_json(path: &Path) -> anyhow::Result<Vec<Entry>> {
 	let text = fs::read_to_string(path).with_context(|| format!("couldn't read {}", path.display()))?;
 
 	// Bitwarden-style export: { "items": [ { "name", "login": { ... } }, ... ] }
-	if let Ok(export) = serde_json::from_str::<BitwardenExport>(&text) && !export.items.is_empty() {
+	if let Ok(export) = serde_json::from_str::<BitwardenExport>(&text)
+		&& !export.items.is_empty()
+	{
 		return Ok(export.items.into_iter().map(Entry::from).collect());
 	}
 

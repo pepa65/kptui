@@ -266,7 +266,9 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 			}
 		})?;
 
-		if event::poll(TICK_RATE)? && let Event::Key(key) = event::read()? {
+		if event::poll(TICK_RATE)?
+			&& let Event::Key(key) = event::read()?
+		{
 			app.last_activity = Instant::now();
 			match app.screen {
 				Screen::Login => handle_login_input(&mut app, key.code),

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::ffi::OsString;
-use std::fs;
+use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
@@ -9,7 +9,9 @@ use keepass::db::{EntryId, EntryMut, EntryRef, Times, fields};
 use keepass::{Database, DatabaseKey};
 
 fn resolve_totp(e: &EntryRef) -> String {
-	if let Some(otp) = e.get_raw_otp_value() && !otp.trim().is_empty() {
+	if let Some(otp) = e.get_raw_otp_value()
+		&& !otp.trim().is_empty()
+	{
 		return otp.to_string();
 	}
 
@@ -162,15 +164,29 @@ pub fn save_database(path: &Path, key: &DatabaseKey, db: &mut Database, entries:
 fn write_to_disk(path: &Path, key: &DatabaseKey, db: &Database) -> anyhow::Result<()> {
 	let tmp_path = sibling_tmp_path(path);
 
-	{
-		let mut file = fs::File::create(&tmp_path).with_context(|| format!("couldn't create {}", tmp_path.display()))?;
+	let mut options = OpenOptions::new();
+	options.write(true).create_new(true);
 
-		db.save(&mut file, key.clone()).map_err(|err| anyhow::anyhow!("failed to write database: {err}"))?;
+	#[cfg(unix)]
+	{
+		use std::os::unix::fs::OpenOptionsExt;
+		options.mode(0o600);
 	}
 
-	fs::rename(&tmp_path, path).with_context(|| format!("couldn't replace {}", path.display()))?;
+	let mut file = options.open(&tmp_path).with_context(|| format!("couldn't create {}", tmp_path.display()))?;
 
-	Ok(())
+	let result = (|| {
+		db.save(&mut file, key.clone()).map_err(|err| anyhow::anyhow!("failed to write database: {err}"))?;
+		file.sync_all().with_context(|| format!("couldn't sync {}", tmp_path.display()))?;
+		fs::rename(&tmp_path, path).with_context(|| format!("couldn't replace {}", path.display()))?;
+		Ok(())
+	})();
+
+	if result.is_err() {
+		let _ = fs::remove_file(&tmp_path);
+	}
+
+	result
 }
 
 fn write_entry(db: &mut Database, entry: &mut Entry) -> anyhow::Result<()> {
@@ -391,5 +407,55 @@ mod tests {
 		let error = unlock_database(&database_path, "secret", Some(&wrong_keyfile)).err().expect("wrong keyfile should fail").to_string();
 		assert!(error.contains("password + keyfile"));
 		assert!(error.contains("Incorrect key"));
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn save_database_rejects_existing_tmp_symlink() {
+		use std::os::unix::fs::symlink;
+
+		let dir = TestDir::new();
+		let database_path = dir.join("database.kdbx");
+		let target_path = dir.join("attacker-target");
+		let tmp_path = dir.join("database.kdbx.tmp");
+
+		// Create a valid database first. This initial save needs an
+		// unobstructed temporary path.
+		let (mut database, key, mut entries) =
+			create_database(&database_path, "correct horse", None)
+				.expect("database should be created");
+
+		// The initial save should have consumed its temporary file.
+		assert!(
+			!tmp_path.exists(),
+			"temporary file should not remain after successful creation"
+		);
+
+		// Simulate an attacker planting a symlink at the predictable
+		// temporary path.
+		fs::write(&target_path, b"must remain untouched")
+			.expect("target should be created");
+		symlink(&target_path, &tmp_path)
+			.expect("tmp symlink should be created");
+
+		let error = save_database(&database_path, &key, &mut database, &mut entries)
+			.expect_err("save should reject the existing tmp symlink");
+
+		assert!(
+			error.to_string().contains("couldn't create"),
+			"unexpected error: {error:#}"
+		);
+
+		assert_eq!(
+			fs::read(&target_path).expect("target should remain readable"),
+			b"must remain untouched"
+		);
+
+		assert!(
+			fs::symlink_metadata(&tmp_path)
+				.expect("tmp path should remain")
+				.file_type()
+				.is_symlink()
+		);
 	}
 }

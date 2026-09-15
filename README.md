@@ -1,4 +1,4 @@
-# kptui 0.8.0
+# kptui 0.10.0
 **TUI password manager built for [KeePass](https://keepass.info/) vaults**
 
 * Compatible with the `.kdbx` (4) file format.
