@@ -1,0 +1,62 @@
+# kptui 0.8.0
+**TUI password manager built for [KeePass](https://keepass.info/) vaults**
+
+* Compatible with the `.kdbx` (4) file format.
+* Fits in with the wider KeePass ecosystem.
+* Fast to open.
+* Keyboard-driven.
+* Stores (only what it needs): `Name`, `Username`, `Password`, `TOTP`, `URL`, `Notes`
+
+## Features
+- **KDBX4 vaults**: reads and writes standard `.kdbx` files, so you can open the same vault in KeePassXC, KeePassDX, or any other compatible client.
+- **Optional keyfile support**: unlocks vaults protected by a master password plus a KeePass keyfile while preserving password-only vault support.
+- **Fuzzy search**: start typing on the index screen to filter entries by name or user.
+- **TOTP codes**: generates live 2FA codes from a stored seed or `otpauth://` URI and copies them straight to your clipboard.
+- **Reuse warnings**: flags entries that share a password or username with another entry, so you can spot weak spots at a glance.
+- **Auto-lock & clipboard clearing**: the vault locks itself after a period of inactivity, and anything copied to the clipboard is cleared automatically.
+- **Themeable**: ships with a default color scheme and supports custom themes.
+- **Change your master password**: from Settings, without needing to touch a file manager or another app.
+- **Import from other vaults or exports**: pull entries in from another `.kdbx` file, or from a CSV/JSON export produced by another password manager.
+
+## Installing
+### From crates.io
+
+```sh
+cargo install kptui
+```
+
+## Getting started
+* On first launch, if no vault is found at the configured path, `kptui` will:
+  - Prompt to create a new database.
+  - Prompt to set a master password.
+* Once unlocked, entries can be browsed, searched and opened from the index screen.
+* To open an existing vault, set `default_database` in the config file at `~/.config/kptui/config.toml`.
+  (A keyfile can also be set with `keyfile`, but the password is still required.)
+```toml
+default_database = "~/passwords.kdbx"
+keyfile = "~/passwords.keyx"
+```
+
+## Configuration
+Jaiba reads its config from `~/.config/kptui/config.toml`:
+
+```toml
+default_database = "~/.local/share/kptui/default.kdbx"
+keyfile = "~/.local/share/kptui/default.keyx"  # Optional (omit for password-only vaults)
+auto_lock = 300  # Seconds of inactivity before locking
+clipboard_timeout = 15  # Seconds before a copied value is cleared
+theme = "catppuccin-mocha"
+```
+
+All fields are optional, the above are the defaults.
+
+## Security notes
+* Vaults are standard KDBX4 files, encrypted with the master password (and, when configured, the keyfile).
+* The keyfile is always in addition to the mandatory password, as an extra requirement.
+* The configured keyfile is read when unlocking, and if missing, unreadable, empty, or incorrect,
+  an explicit error is given.
+* The keyfile's path is stored in the config, never its contents.
+* Changing the master password re-encrypts the whole vault in place, and requires entering the _current_ password first.
+  For a keyfile-protected vault, the configured keyfile remains part of the new composite key.
+* The clipboard is cleared automatically after `clipboard_timeout` seconds, but only if it still holds that value.
+* The app locks itself after `auto_lock` seconds of inactivity, clearing decrypted entries and the master password from memory.

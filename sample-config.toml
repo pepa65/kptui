@@ -1,0 +1,14 @@
+# Existing KDBX database to open
+default_database = "~/.local/share/kptui/default.kdbx"
+
+# Optional KeePass keyfile (leave unset for password-only vaults)
+#keyfile = "~/.local/share/kptui/default.keyx"
+
+# Seconds of inactivity before locking the vault
+auto_lock = 300
+
+# Seconds before a copied value is cleared from the clipboard
+clipboard_timeout = 15
+
+# Name of a theme installed in ~/.config/kptui/themes/
+theme = "catppuccin-mocha"

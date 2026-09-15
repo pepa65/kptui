@@ -1,6 +1,1 @@
-debug
-target
-**/*.rs.bk
-*.pdb
-.tmp
-**/mutants.out*/
+/target/
