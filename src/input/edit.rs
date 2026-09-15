@@ -260,10 +260,8 @@ fn delete_current_entry(app: &mut App) {
 		}
 	}
 
-	if let Some(idx) = app.edit_target {
-		if idx < app.entries.len() {
-			app.entries.remove(idx);
-		}
+	if let Some(idx) = app.edit_target && idx < app.entries.len() {
+		app.entries.remove(idx);
 	}
 
 	calculate_warnings(&mut app.entries);

@@ -9,26 +9,18 @@ use crate::util::expand_tilde;
 
 const SAMPLE_CONFIG: &str = include_str!("../sample-config.toml");
 const AUTO_LOCK: u64 = 300;
-const CLIPBOARD_TIMEOUT: u64 = 15;
 const CONFIGFILE: &str = "~/.config/kptui/config.toml";
 
 pub struct Config {
 	pub default_database: Option<PathBuf>,
 	pub keyfile: Option<PathBuf>,
 	pub auto_lock: Duration,
-	pub clipboard_timeout: Duration,
 	pub theme: Option<String>,
 }
 
 impl Default for Config {
 	fn default() -> Self {
-		Self {
-			default_database: None,
-			keyfile: None,
-			auto_lock: Duration::from_secs(AUTO_LOCK),
-			clipboard_timeout: Duration::from_secs(CLIPBOARD_TIMEOUT),
-			theme: None,
-		}
+		Self { default_database: None, keyfile: None, auto_lock: Duration::from_secs(AUTO_LOCK), theme: None }
 	}
 }
 
@@ -37,7 +29,6 @@ struct ConfigFile {
 	default_database: Option<String>,
 	keyfile: Option<String>,
 	auto_lock: Option<u64>,
-	clipboard_timeout: Option<u64>,
 	theme: Option<String>,
 }
 
@@ -65,7 +56,6 @@ fn parse_config(text: &str) -> anyhow::Result<Config> {
 		default_database: raw.default_database.map(|s| expand_tilde(&s)),
 		keyfile: raw.keyfile.map(|s| expand_tilde(&s)),
 		auto_lock: raw.auto_lock.map(Duration::from_secs).unwrap_or(defaults.auto_lock),
-		clipboard_timeout: raw.clipboard_timeout.map(Duration::from_secs).unwrap_or(defaults.clipboard_timeout),
 		theme: raw.theme,
 	})
 }
@@ -75,7 +65,6 @@ struct ConfigFileOut<'a> {
 	default_database: Option<String>,
 	keyfile: Option<String>,
 	auto_lock: u64,
-	clipboard_timeout: u64,
 	theme: Option<&'a str>,
 }
 
@@ -98,7 +87,6 @@ fn serialize_config(config: &Config) -> anyhow::Result<String> {
 		default_database: config.default_database.as_ref().map(|p| p.display().to_string()),
 		keyfile: config.keyfile.as_ref().map(|p| p.display().to_string()),
 		auto_lock: config.auto_lock.as_secs(),
-		clipboard_timeout: config.clipboard_timeout.as_secs(),
 		theme: config.theme.as_deref(),
 	};
 

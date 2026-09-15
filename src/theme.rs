@@ -153,7 +153,7 @@ pub fn load_theme(name: Option<&str>) -> anyhow::Result<Theme> {
 
 pub fn list_theme_names() -> anyhow::Result<Vec<String>> {
 	let mut configs = read_theme_configs()?;
-	configs.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+	configs.sort_by_key(|a| a.name.to_lowercase());
 
 	Ok(configs.into_iter().map(|config| config.name).collect())
 }
@@ -169,27 +169,6 @@ fn find_theme(name: &str) -> anyhow::Result<ThemeConfig> {
 
 pub fn slugify(name: &str) -> String {
 	name.trim().chars().collect::<String>().split_whitespace().collect::<Vec<_>>().join("-").to_lowercase()
-}
-
-#[cfg(test)]
-mod tests {
-	use super::slugify;
-
-	#[test]
-	fn slugifies_simple_names() {
-		assert_eq!(slugify("Catppuccin Mocha"), "catppuccin-mocha");
-		assert_eq!(slugify("Dracula"), "dracula");
-	}
-
-	#[test]
-	fn slugify_collapses_whitespace() {
-		assert_eq!(slugify("  Tokyo   Night  "), "tokyo-night");
-	}
-
-	#[test]
-	fn slugify_is_idempotent() {
-		assert_eq!(slugify("catppuccin-mocha"), "catppuccin-mocha");
-	}
 }
 
 fn read_theme_configs() -> anyhow::Result<Vec<ThemeConfig>> {
@@ -214,4 +193,25 @@ fn read_theme_configs() -> anyhow::Result<Vec<ThemeConfig>> {
 	}
 
 	Ok(configs)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::slugify;
+
+	#[test]
+	fn slugifies_simple_names() {
+		assert_eq!(slugify("Catppuccin Mocha"), "catppuccin-mocha");
+		assert_eq!(slugify("Dracula"), "dracula");
+	}
+
+	#[test]
+	fn slugify_collapses_whitespace() {
+		assert_eq!(slugify("  Tokyo   Night  "), "tokyo-night");
+	}
+
+	#[test]
+	fn slugify_is_idempotent() {
+		assert_eq!(slugify("catppuccin-mocha"), "catppuccin-mocha");
+	}
 }

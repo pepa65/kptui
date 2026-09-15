@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use ratatui::{
 	Frame,
 	layout::{Constraint, Direction, Layout},
@@ -17,17 +15,7 @@ fn help_items(slim_mode: bool) -> &'static [&'static str] {
 	if slim_mode {
 		&["[↑↓]", "[^u]", "[^p]", "[^t]", "[^r]", "[^a]", "[^s]", "[Enter]", "[Esc]"]
 	} else {
-		&[
-			"[↑↓] navigate",
-			"[^u] cp_user",
-			"[^p] cp_password",
-			"[^t] cp_totp",
-			"[^r] cp_url",
-			"[^a] add_entry",
-			"[^s] settings",
-			"[Enter] expand_entry",
-			"[Esc] quit",
-		]
+		&["[↑↓] navigate", "[^a] add_entry", "[^s] settings", "[Enter] expand_entry", "[Esc] quit"]
 	}
 }
 
@@ -97,11 +85,7 @@ pub fn draw_index(frame: &mut Frame, app: &mut App) {
 
 	let help_text = help_lines.iter().map(|line| format!("  {line}")).collect::<Vec<_>>().join("\n");
 
-	let help = if let Some(timer) = &app.clipboard_timer {
-		let remaining = timer.clear_at.saturating_duration_since(Instant::now()).as_secs() + 1; // round up so it doesn't flash "0s" before the tick that clears it
-
-		Paragraph::new(format!("  Copied {} :: clearing in {remaining}s", timer.label)).style(Style::new().fg(app.theme.warning))
-	} else if let Some(status) = &app.status {
+	let help = if let Some(status) = &app.status {
 		// Replace the help text with the latest status message.
 		Paragraph::new(format!("  {status}")).style(Style::new().fg(app.theme.warning))
 	} else {

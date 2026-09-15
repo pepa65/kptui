@@ -14,7 +14,6 @@ pub const ROW_COUNT: usize = 8;
 pub const DATABASE_ROW: usize = 0;
 pub const KEYFILE_ROW: usize = 1;
 pub const AUTO_LOCK_ROW: usize = 2;
-pub const CLIPBOARD_TIMEOUT_ROW: usize = 3;
 pub const THEME_ROW: usize = 4;
 pub const CHANGE_PASSWORD_ROW: usize = 5;
 pub const IMPORT_ROW: usize = 6;
@@ -81,7 +80,6 @@ fn activate_selected(app: &mut App) {
 		DATABASE_ROW => start_editing_database(app),
 		KEYFILE_ROW => start_editing_keyfile(app),
 		AUTO_LOCK_ROW => start_editing_auto_lock(app),
-		CLIPBOARD_TIMEOUT_ROW => start_editing_clipboard_timeout(app),
 		THEME_ROW => start_choosing_theme(app),
 		CHANGE_PASSWORD_ROW => start_change_password(app),
 		IMPORT_ROW => start_import(app),
@@ -104,12 +102,6 @@ fn start_editing_keyfile(app: &mut App) {
 
 fn start_editing_auto_lock(app: &mut App) {
 	app.field_buffer = app.config.auto_lock.as_secs().to_string();
-	app.editing_field = true;
-	app.status = None;
-}
-
-fn start_editing_clipboard_timeout(app: &mut App) {
-	app.field_buffer = app.config.clipboard_timeout.as_secs().to_string();
 	app.editing_field = true;
 	app.status = None;
 }
@@ -156,14 +148,6 @@ fn commit_field(app: &mut App) {
 			}
 		},
 
-		CLIPBOARD_TIMEOUT_ROW => match parse_seconds(&value) {
-			Ok(secs) => app.config.clipboard_timeout = Duration::from_secs(secs),
-			Err(err) => {
-				app.status = Some(err);
-				return;
-			}
-		},
-
 		_ => return,
 	}
 
@@ -181,14 +165,14 @@ fn start_change_password(app: &mut App) {
 	app.current_password_buffer.clear();
 	app.new_password_buffer.clear();
 	app.new_password_confirm.clear();
-	app.password_change_step = PasswordChangeStep::CurrentPassword;
+	app.password_change_step = PasswordChangeStep::Current;
 	app.changing_password = true;
 	app.status = None;
 }
 
 fn cancel_change_password(app: &mut App) {
 	app.changing_password = false;
-	app.password_change_step = PasswordChangeStep::CurrentPassword;
+	app.password_change_step = PasswordChangeStep::Current;
 	app.current_password_buffer.clear();
 	app.new_password_buffer.clear();
 	app.new_password_confirm.clear();
@@ -202,9 +186,9 @@ fn handle_change_password_input(app: &mut App, key: KeyCode) {
 			let limit = app.max_len.max(1);
 
 			let buffer = match app.password_change_step {
-				PasswordChangeStep::CurrentPassword => &mut app.current_password_buffer,
-				PasswordChangeStep::NewPassword => &mut app.new_password_buffer,
-				PasswordChangeStep::ConfirmNewPassword => &mut app.new_password_confirm,
+				PasswordChangeStep::Current => &mut app.current_password_buffer,
+				PasswordChangeStep::New => &mut app.new_password_buffer,
+				PasswordChangeStep::ConfirmNew => &mut app.new_password_confirm,
 			};
 
 			if buffer.len() < limit {
@@ -216,24 +200,24 @@ fn handle_change_password_input(app: &mut App, key: KeyCode) {
 			app.status = None;
 
 			let buffer = match app.password_change_step {
-				PasswordChangeStep::CurrentPassword => &mut app.current_password_buffer,
-				PasswordChangeStep::NewPassword => &mut app.new_password_buffer,
-				PasswordChangeStep::ConfirmNewPassword => &mut app.new_password_confirm,
+				PasswordChangeStep::Current => &mut app.current_password_buffer,
+				PasswordChangeStep::New => &mut app.new_password_buffer,
+				PasswordChangeStep::ConfirmNew => &mut app.new_password_confirm,
 			};
 
 			buffer.pop();
 		}
 
 		KeyCode::Enter => match app.password_change_step {
-			PasswordChangeStep::CurrentPassword => verify_current_password(app),
-			PasswordChangeStep::NewPassword => {
+			PasswordChangeStep::Current => verify_current_password(app),
+			PasswordChangeStep::New => {
 				if app.new_password_buffer.is_empty() {
 					app.status = Some("new password can't be empty".to_string());
 				} else {
-					app.password_change_step = PasswordChangeStep::ConfirmNewPassword;
+					app.password_change_step = PasswordChangeStep::ConfirmNew;
 				}
 			}
-			PasswordChangeStep::ConfirmNewPassword => commit_password_change(app),
+			PasswordChangeStep::ConfirmNew => commit_password_change(app),
 		},
 
 		KeyCode::Esc => cancel_change_password(app),
@@ -253,7 +237,7 @@ fn verify_current_password(app: &mut App) {
 		Ok(_) => {
 			app.current_password_buffer.clear();
 			app.status = None;
-			app.password_change_step = PasswordChangeStep::NewPassword;
+			app.password_change_step = PasswordChangeStep::New;
 		}
 		Err(err) => {
 			app.status = Some(if app.config.keyfile.is_some() {
@@ -270,7 +254,7 @@ fn commit_password_change(app: &mut App) {
 	if app.new_password_confirm != app.new_password_buffer {
 		app.status = Some("passwords don't match".to_string());
 		app.new_password_confirm.clear();
-		app.password_change_step = PasswordChangeStep::NewPassword;
+		app.password_change_step = PasswordChangeStep::New;
 		return;
 	}
 
@@ -280,7 +264,7 @@ fn commit_password_change(app: &mut App) {
 			app.status = Some(format!("couldn't change password: {err:#}"));
 			app.new_password_buffer.clear();
 			app.new_password_confirm.clear();
-			app.password_change_step = PasswordChangeStep::NewPassword;
+			app.password_change_step = PasswordChangeStep::New;
 			return;
 		}
 	};
@@ -300,7 +284,7 @@ fn commit_password_change(app: &mut App) {
 	});
 
 	app.changing_password = false;
-	app.password_change_step = PasswordChangeStep::CurrentPassword;
+	app.password_change_step = PasswordChangeStep::Current;
 	app.current_password_buffer.clear();
 	app.new_password_buffer.clear();
 	app.new_password_confirm.clear();

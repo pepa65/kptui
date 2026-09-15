@@ -9,10 +9,8 @@ use keepass::db::{EntryId, EntryMut, EntryRef, Times, fields};
 use keepass::{Database, DatabaseKey};
 
 fn resolve_totp(e: &EntryRef) -> String {
-	if let Some(otp) = e.get_raw_otp_value() {
-		if !otp.trim().is_empty() {
-			return otp.to_string();
-		}
+	if let Some(otp) = e.get_raw_otp_value() && !otp.trim().is_empty() {
+		return otp.to_string();
 	}
 
 	let Some(seed) = e.get("TOTP Seed") else {
@@ -214,7 +212,7 @@ fn sibling_tmp_path(path: &Path) -> PathBuf {
 	PathBuf::from(name)
 }
 
-pub fn calculate_warnings(entries: &mut Vec<Entry>) {
+pub fn calculate_warnings(entries: &mut [Entry]) {
 	let mut password_counts: HashMap<String, u32> = HashMap::new();
 	let mut user_counts: HashMap<String, u32> = HashMap::new();
 

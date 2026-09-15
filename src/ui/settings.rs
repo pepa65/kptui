@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use crate::app::App;
-use crate::input::settings::{AUTO_LOCK_ROW, CLIPBOARD_TIMEOUT_ROW, DATABASE_ROW, KEYFILE_ROW};
+use crate::input::settings::{AUTO_LOCK_ROW, DATABASE_ROW, KEYFILE_ROW};
 use crate::util::wrap_help_items;
 
 fn nav_help_items(slim_mode: bool) -> &'static [&'static str] {
@@ -97,7 +97,6 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 	let database_value = app.config.default_database.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
 	let keyfile_value = app.config.keyfile.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
 	let auto_lock_value = app.config.auto_lock.as_secs().to_string();
-	let clipboard_timeout_value = app.config.clipboard_timeout.as_secs().to_string();
 
 	let theme_value = if app.available_themes.is_empty() {
 		Line::from(Span::styled("no themes found in ~/.config/kptui/themes", warning))
@@ -112,7 +111,6 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 		field("Default database", render_value(DATABASE_ROW, database_value)),
 		field("Keyfile (optional)", render_value(KEYFILE_ROW, keyfile_value)),
 		field("Auto-lock (seconds)", render_value(AUTO_LOCK_ROW, auto_lock_value)),
-		field("Clipboard timeout (seconds)", render_value(CLIPBOARD_TIMEOUT_ROW, clipboard_timeout_value)),
 		field("Theme", theme_value),
 		field("Change master password", Line::from(Span::styled("[Enter] to change", placeholder))),
 		field("Import database", Line::from(Span::styled("[Enter] to import", placeholder))),
@@ -158,15 +156,15 @@ fn draw_change_password(frame: &mut Frame, app: &mut App) {
 	app.max_len = (input_area.width - 2) as usize;
 
 	let title = match app.password_change_step {
-		crate::app::PasswordChangeStep::CurrentPassword => " Current master password ",
-		crate::app::PasswordChangeStep::NewPassword => " New master password ",
-		crate::app::PasswordChangeStep::ConfirmNewPassword => " Confirm new master password ",
+		crate::app::PasswordChangeStep::Current => " Current master password ",
+		crate::app::PasswordChangeStep::New => " New master password ",
+		crate::app::PasswordChangeStep::ConfirmNew => " Confirm new master password ",
 	};
 
 	let buf = match app.password_change_step {
-		crate::app::PasswordChangeStep::CurrentPassword => &app.current_password_buffer,
-		crate::app::PasswordChangeStep::NewPassword => &app.new_password_buffer,
-		crate::app::PasswordChangeStep::ConfirmNewPassword => &app.new_password_confirm,
+		crate::app::PasswordChangeStep::Current => &app.current_password_buffer,
+		crate::app::PasswordChangeStep::New => &app.new_password_buffer,
+		crate::app::PasswordChangeStep::ConfirmNew => &app.new_password_confirm,
 	};
 
 	let input = Paragraph::new("•".repeat(buf.chars().count()))
@@ -178,8 +176,8 @@ fn draw_change_password(frame: &mut Frame, app: &mut App) {
 	let hint_area = Rect { x: input_area.x, y: input_area.y + input_area.height, width: input_area.width, height: 1 };
 
 	let default_hint = match app.password_change_step {
-		crate::app::PasswordChangeStep::CurrentPassword => "verify current master password",
-		crate::app::PasswordChangeStep::NewPassword | crate::app::PasswordChangeStep::ConfirmNewPassword => {
+		crate::app::PasswordChangeStep::Current => "verify current master password",
+		crate::app::PasswordChangeStep::New | crate::app::PasswordChangeStep::ConfirmNew => {
 			"this re-encrypts your database file with the new password"
 		}
 	};

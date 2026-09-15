@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use ratatui::{
 	Frame,
 	layout::{Constraint, Direction, Layout},
@@ -202,11 +200,7 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) {
 
 	frame.render_stateful_widget(list, vertical[0], &mut app.edit_state);
 
-	let help = if let Some(timer) = &app.clipboard_timer {
-		let remaining = timer.clear_at.saturating_duration_since(Instant::now()).as_secs() + 1;
-
-		Paragraph::new(format!("  Copied {} :: clearing in {remaining}s", timer.label)).style(Style::new().fg(app.theme.warning))
-	} else if let Some(status) = &app.status {
+	let help = if let Some(status) = &app.status {
 		Paragraph::new(format!("  {status}")).style(Style::new().fg(app.theme.warning))
 	} else {
 		let help_text = help_lines.iter().map(|line| format!("  {line}")).collect::<Vec<_>>().join("\n");

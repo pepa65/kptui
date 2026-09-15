@@ -2,7 +2,6 @@ use std::io;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use arboard::Clipboard;
 use crossterm::event::{self, Event};
 use keepass::{Database, DatabaseKey};
 use ratatui::{
@@ -12,7 +11,6 @@ use ratatui::{
 	widgets::{Block, ListState, TableState},
 };
 
-use crate::clipboard::{ClipboardTimer, maybe_clear_clipboard};
 use crate::config::{Config, load_config};
 use crate::db::Entry;
 use crate::input::edit::handle_edit_input;
@@ -34,9 +32,9 @@ pub enum Screen {
 
 #[derive(PartialEq, Eq)]
 pub enum PasswordChangeStep {
-	CurrentPassword,
-	NewPassword,
-	ConfirmNewPassword,
+	Current,
+	New,
+	ConfirmNew,
 }
 
 #[derive(PartialEq, Eq)]
@@ -105,10 +103,6 @@ pub struct App {
 
 	pub status: Option<String>,
 
-	pub clipboard: Option<Clipboard>,
-
-	pub clipboard_timer: Option<ClipboardTimer>,
-
 	pub should_quit: bool,
 	pub slim_mode: bool,
 }
@@ -144,12 +138,6 @@ impl App {
 		let count = self.filtered.len();
 		self.index_state.select(if count == 0 { None } else { Some(0) });
 	}
-
-	pub fn selected_entry(&self) -> Option<&Entry> {
-		let selected = self.index_state.selected()?;
-		let entry_idx = *self.filtered.get(selected)?;
-		self.entries.get(entry_idx)
-	}
 }
 
 fn maybe_auto_lock(app: &mut App) {
@@ -183,7 +171,7 @@ fn maybe_auto_lock(app: &mut App) {
 	app.confirming_new_db_password = false;
 	app.new_db_confirm.clear();
 	app.changing_password = false;
-	app.password_change_step = PasswordChangeStep::CurrentPassword;
+	app.password_change_step = PasswordChangeStep::Current;
 	app.current_password_buffer.clear();
 	app.new_password_buffer.clear();
 	app.new_password_confirm.clear();
@@ -227,7 +215,7 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 		choosing_theme: false,
 		theme_state: ListState::default(),
 		changing_password: false,
-		password_change_step: PasswordChangeStep::CurrentPassword,
+		password_change_step: PasswordChangeStep::Current,
 		current_password_buffer: String::new(),
 		new_password_buffer: String::new(),
 		new_password_confirm: String::new(),
@@ -260,8 +248,6 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 		confirming_new_db_password: false,
 		new_db_confirm: String::new(),
 		status: None,
-		clipboard: Clipboard::new().ok(),
-		clipboard_timer: None,
 		should_quit: false,
 		slim_mode,
 	};
@@ -280,20 +266,16 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 			}
 		})?;
 
-		if event::poll(TICK_RATE)? {
-			if let Event::Key(key) = event::read()? {
-				app.last_activity = Instant::now();
-
-				match app.screen {
-					Screen::Login => handle_login_input(&mut app, key.code),
-					Screen::Index => handle_index_input(&mut app, key),
-					Screen::Edit => handle_edit_input(&mut app, key.code),
-					Screen::Settings => handle_settings_input(&mut app, key.code),
-				}
+		if event::poll(TICK_RATE)? && let Event::Key(key) = event::read()? {
+			app.last_activity = Instant::now();
+			match app.screen {
+				Screen::Login => handle_login_input(&mut app, key.code),
+				Screen::Index => handle_index_input(&mut app, key),
+				Screen::Edit => handle_edit_input(&mut app, key.code),
+				Screen::Settings => handle_settings_input(&mut app, key.code),
 			}
 		}
 
-		maybe_clear_clipboard(&mut app);
 		maybe_auto_lock(&mut app);
 
 		if app.should_quit {

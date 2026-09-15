@@ -11,9 +11,9 @@
 - **KDBX4 vaults**: reads and writes standard `.kdbx` files, so you can open the same vault in KeePassXC, KeePassDX, or any other compatible client.
 - **Optional keyfile support**: unlocks vaults protected by a master password plus a KeePass keyfile while preserving password-only vault support.
 - **Fuzzy search**: start typing on the index screen to filter entries by name or user.
-- **TOTP codes**: generates live 2FA codes from a stored seed or `otpauth://` URI and copies them straight to your clipboard.
+- **TOTP codes**: generates live 2FA codes from a stored seed or `otpauth://` URI.
 - **Reuse warnings**: flags entries that share a password or username with another entry, so you can spot weak spots at a glance.
-- **Auto-lock & clipboard clearing**: the vault locks itself after a period of inactivity, and anything copied to the clipboard is cleared automatically.
+- **Auto-lock**: the vault locks itself after a period of inactivity.
 - **Themeable**: ships with a default color scheme and supports custom themes.
 - **Change your master password**: from Settings, without needing to touch a file manager or another app.
 - **Import from other vaults or exports**: pull entries in from another `.kdbx` file, or from a CSV/JSON export produced by another password manager.
@@ -44,7 +44,6 @@ Jaiba reads its config from `~/.config/kptui/config.toml`:
 default_database = "~/.local/share/kptui/default.kdbx"
 keyfile = "~/.local/share/kptui/default.keyx"  # Optional (omit for password-only vaults)
 auto_lock = 300  # Seconds of inactivity before locking
-clipboard_timeout = 15  # Seconds before a copied value is cleared
 theme = "catppuccin-mocha"
 ```
 
@@ -58,5 +57,4 @@ All fields are optional, the above are the defaults.
 * The keyfile's path is stored in the config, never its contents.
 * Changing the master password re-encrypts the whole vault in place, and requires entering the _current_ password first.
   For a keyfile-protected vault, the configured keyfile remains part of the new composite key.
-* The clipboard is cleared automatically after `clipboard_timeout` seconds, but only if it still holds that value.
 * The app locks itself after `auto_lock` seconds of inactivity, clearing decrypted entries and the master password from memory.
