@@ -421,41 +421,22 @@ mod tests {
 
 		// Create a valid database first. This initial save needs an
 		// unobstructed temporary path.
-		let (mut database, key, mut entries) =
-			create_database(&database_path, "correct horse", None)
-				.expect("database should be created");
+		let (mut database, key, mut entries) = create_database(&database_path, "correct horse", None).expect("database should be created");
 
 		// The initial save should have consumed its temporary file.
-		assert!(
-			!tmp_path.exists(),
-			"temporary file should not remain after successful creation"
-		);
+		assert!(!tmp_path.exists(), "temporary file should not remain after successful creation");
 
 		// Simulate an attacker planting a symlink at the predictable
 		// temporary path.
-		fs::write(&target_path, b"must remain untouched")
-			.expect("target should be created");
-		symlink(&target_path, &tmp_path)
-			.expect("tmp symlink should be created");
+		fs::write(&target_path, b"must remain untouched").expect("target should be created");
+		symlink(&target_path, &tmp_path).expect("tmp symlink should be created");
 
-		let error = save_database(&database_path, &key, &mut database, &mut entries)
-			.expect_err("save should reject the existing tmp symlink");
+		let error = save_database(&database_path, &key, &mut database, &mut entries).expect_err("save should reject the existing tmp symlink");
 
-		assert!(
-			error.to_string().contains("couldn't create"),
-			"unexpected error: {error:#}"
-		);
+		assert!(error.to_string().contains("couldn't create"), "unexpected error: {error:#}");
 
-		assert_eq!(
-			fs::read(&target_path).expect("target should remain readable"),
-			b"must remain untouched"
-		);
+		assert_eq!(fs::read(&target_path).expect("target should remain readable"), b"must remain untouched");
 
-		assert!(
-			fs::symlink_metadata(&tmp_path)
-				.expect("tmp path should remain")
-				.file_type()
-				.is_symlink()
-		);
+		assert!(fs::symlink_metadata(&tmp_path).expect("tmp path should remain").file_type().is_symlink());
 	}
 }

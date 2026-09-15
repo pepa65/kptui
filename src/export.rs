@@ -1,4 +1,5 @@
-use std::fs;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::path::Path;
 
 use anyhow::Context;
@@ -24,7 +25,18 @@ pub fn detect_format(path: &Path) -> anyhow::Result<ExportFormat> {
 }
 
 pub fn export_csv(path: &Path, entries: &[Entry]) -> anyhow::Result<()> {
-	let mut writer = csv::WriterBuilder::new().from_path(path).with_context(|| format!("couldn't create {}", path.display()))?;
+	let mut options = OpenOptions::new();
+	options.write(true).create_new(true);
+
+	#[cfg(unix)]
+	{
+		use std::os::unix::fs::OpenOptionsExt;
+		options.mode(0o600);
+	}
+
+	let file = options.open(path).with_context(|| format!("couldn't create {}", path.display()))?;
+
+	let mut writer = csv::WriterBuilder::new().from_writer(file);
 
 	writer.write_record(["name", "username", "password", "url", "totp", "notes"])?;
 
@@ -62,7 +74,18 @@ pub fn export_json(path: &Path, entries: &[Entry]) -> anyhow::Result<()> {
 
 	let json = serde_json::to_string_pretty(&out).context("couldn't serialize entries")?;
 
-	fs::write(path, json).with_context(|| format!("couldn't write {}", path.display()))?;
+	let mut options = OpenOptions::new();
+	options.write(true).create_new(true);
+
+	#[cfg(unix)]
+	{
+		use std::os::unix::fs::OpenOptionsExt;
+		options.mode(0o600);
+	}
+
+	let mut file = options.open(path).with_context(|| format!("couldn't create {}", path.display()))?;
+
+	file.write_all(json.as_bytes()).with_context(|| format!("couldn't write {}", path.display()))?;
 
 	Ok(())
 }
