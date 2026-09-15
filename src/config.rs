@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::Context;
@@ -10,6 +10,12 @@ use crate::util::expand_tilde;
 const SAMPLE_CONFIG: &str = include_str!("../sample-config.toml");
 const AUTO_LOCK: u64 = 300;
 const CONFIGFILE: &str = "~/.config/kptui/config.toml";
+
+fn sibling_tmp_path(path: &Path) -> PathBuf {
+	let mut tmp = path.as_os_str().to_os_string();
+	tmp.push(".tmp");
+	PathBuf::from(tmp)
+}
 
 pub struct Config {
 	pub default_database: Option<PathBuf>,
@@ -35,12 +41,26 @@ struct ConfigFile {
 pub fn load_config() -> anyhow::Result<Config> {
 	let path = expand_tilde(CONFIGFILE);
 
-	if !path.is_file() {
+	if !path.exists() {
 		if let Some(parent) = path.parent() {
 			fs::create_dir_all(parent).with_context(|| format!("couldn't create {}", parent.display()))?;
 		}
 
-		fs::write(&path, SAMPLE_CONFIG).with_context(|| format!("couldn't write {}", path.display()))?;
+		let mut options = fs::OpenOptions::new();
+		options.write(true).create_new(true);
+
+		let result = options.open(&path);
+
+		match result {
+			Ok(mut file) => {
+				use std::io::Write;
+				file.write_all(SAMPLE_CONFIG.as_bytes()).with_context(|| format!("couldn't write {}", path.display()))?;
+			}
+			Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+			Err(error) => {
+				return Err(error).with_context(|| format!("couldn't create {}", path.display()));
+			}
+		}
 	}
 
 	let text = fs::read_to_string(&path).with_context(|| format!("couldn't read {}", path.display()))?;
@@ -76,10 +96,30 @@ pub fn save_config(config: &Config) -> anyhow::Result<()> {
 	}
 
 	let text = serialize_config(config)?;
+	let tmp_path = sibling_tmp_path(&path);
 
-	fs::write(&path, text).with_context(|| format!("couldn't write {}", path.display()))?;
+	let mut options = fs::OpenOptions::new();
+	options.write(true).create_new(true);
 
-	Ok(())
+	let mut file = options.open(&tmp_path).with_context(|| format!("couldn't create {}", tmp_path.display()))?;
+
+	let result = (|| {
+		use std::io::Write;
+
+		file.write_all(text.as_bytes()).with_context(|| format!("couldn't write {}", tmp_path.display()))?;
+
+		file.sync_all().with_context(|| format!("couldn't sync {}", tmp_path.display()))?;
+
+		fs::rename(&tmp_path, &path).with_context(|| format!("couldn't replace {}", path.display()))?;
+
+		Ok(())
+	})();
+
+	if result.is_err() {
+		let _ = fs::remove_file(&tmp_path);
+	}
+
+	result
 }
 
 fn serialize_config(config: &Config) -> anyhow::Result<String> {
