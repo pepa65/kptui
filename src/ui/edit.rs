@@ -15,14 +15,14 @@ use crate::util::wrap_help_items;
 
 fn nav_help_items(slim_mode: bool) -> &'static [&'static str] {
 	if slim_mode {
-		&["[↑↓]", "[enter]", "[v]", "[d]", "[esc]"]
+		&["[↑↓]", "[Enter]", "[v]", "[d]", "[Esc]"]
 	} else {
-		&["[↑↓] navigate", "[enter] edit field", "[v] toggle visibility", "[d] delete entry", "[esc] close"]
+		&["[↑↓] navigate", "[Enter] edit field", "[v] toggle visibility", "[d] delete entry", "[Esc] close"]
 	}
 }
 
 fn field_help_items(slim_mode: bool) -> &'static [&'static str] {
-	if slim_mode { &["[enter]", "[esc]"] } else { &["[enter] save field", "[esc] cancel"] }
+	if slim_mode { &["[Enter]", "[Esc]"] } else { &["[Enter] save field", "[Esc] cancel"] }
 }
 
 fn wrap_notes(notes: &str, width: usize) -> Vec<String> {

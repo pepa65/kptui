@@ -155,7 +155,7 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 
 		let hint_area = Rect { x: input_area.x, y: input_area.y + input_area.height, width: input_area.width, height: 2 };
 
-		let hint = Paragraph::new(vec![Line::from(format!("will create {}", path.display())), Line::from("[enter] confirm  [esc] cancel")])
+		let hint = Paragraph::new(vec![Line::from(format!("will create {}", path.display())), Line::from("[Enter] confirm  [Esc] cancel")])
 			.alignment(Alignment::Center)
 			.style(Style::new().fg(app.theme.warning));
 
@@ -163,7 +163,7 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 	} else if missing {
 		let hint_area = Rect { x: input_area.x, y: input_area.y + input_area.height, width: input_area.width, height: 1 };
 
-		let hint = Paragraph::new("[n] create a new database  [esc] quit")
+		let hint = Paragraph::new("[n] create a new database  [Esc] quit")
 			.alignment(Alignment::Center)
 			.style(Style::new().fg(app.theme.warning));
 
