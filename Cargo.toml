@@ -1,6 +1,6 @@
 [package]
 name = "kptui"
-version = "0.12.0"
+version = "0.13.0"
 edition = "2024"
 rust-version = "1.97"
 description = "TUI password manager for KeePass vaults"
@@ -22,6 +22,7 @@ toml = "1"
 keepass = { version = "0.14", features = ["save_kdbx4", "totp"] }
 chrono = "0.4"
 unicode-width = "0.2"
+zeroize = "1"
 
 [profile.release]
 strip = true

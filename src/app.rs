@@ -10,6 +10,7 @@ use ratatui::{
 	style::Style,
 	widgets::{Block, ListState, TableState},
 };
+use zeroize::Zeroizing;
 
 use crate::config::{Config, load_config};
 use crate::db::Entry;
@@ -51,7 +52,7 @@ pub enum ExportStep {
 
 pub struct App {
 	pub screen: Screen,
-	pub password: String,
+	pub password: Zeroizing<String>,
 	pub query: String,
 	pub max_len: usize,
 	pub index_state: TableState,
@@ -73,7 +74,7 @@ pub struct App {
 
 	pub creating_database: bool,
 	pub confirming_new_db_password: bool,
-	pub new_db_confirm: String,
+	pub new_db_confirm: Zeroizing<String>,
 
 	pub available_themes: Vec<String>,
 	pub settings_state: ListState,
@@ -82,14 +83,14 @@ pub struct App {
 
 	pub changing_password: bool,
 	pub password_change_step: PasswordChangeStep,
-	pub current_password_buffer: String,
-	pub new_password_buffer: String,
-	pub new_password_confirm: String,
+	pub current_password_buffer: Zeroizing<String>,
+	pub new_password_buffer: Zeroizing<String>,
+	pub new_password_confirm: Zeroizing<String>,
 
 	pub importing_database: bool,
 	pub import_step: ImportStep,
 	pub import_path_buffer: String,
-	pub import_kdbx_password_buffer: String,
+	pub import_kdbx_password_buffer: Zeroizing<String>,
 	pub pending_import_path: Option<PathBuf>,
 
 	pub exporting_database: bool,
@@ -205,7 +206,7 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 
 	let mut app = App {
 		screen: Screen::Login,
-		password: String::new(),
+		password: Zeroizing::new(String::new()),
 		query: String::new(),
 		max_len: 0,
 		theme,
@@ -216,13 +217,13 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 		theme_state: ListState::default(),
 		changing_password: false,
 		password_change_step: PasswordChangeStep::Current,
-		current_password_buffer: String::new(),
-		new_password_buffer: String::new(),
-		new_password_confirm: String::new(),
+		current_password_buffer: Zeroizing::new(String::new()),
+		new_password_buffer: Zeroizing::new(String::new()),
+		new_password_confirm: Zeroizing::new(String::new()),
 		importing_database: false,
 		import_step: ImportStep::Path,
 		import_path_buffer: String::new(),
-		import_kdbx_password_buffer: String::new(),
+		import_kdbx_password_buffer: Zeroizing::new(String::new()),
 		pending_import_path: None,
 		exporting_database: false,
 		export_step: ExportStep::Path,
@@ -246,7 +247,7 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 		db_key: None,
 		creating_database: false,
 		confirming_new_db_password: false,
-		new_db_confirm: String::new(),
+		new_db_confirm: Zeroizing::new(String::new()),
 		status: None,
 		should_quit: false,
 		slim_mode,
