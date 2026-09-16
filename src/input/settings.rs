@@ -9,15 +9,15 @@ use crate::db::{Entry, build_database_key, calculate_warnings, save_database, un
 use crate::theme::load_theme;
 use crate::util::expand_tilde;
 
-pub const ROW_COUNT: usize = 8;
+pub const ROW_COUNT: usize = 7;
 
 pub const DATABASE_ROW: usize = 0;
 pub const KEYFILE_ROW: usize = 1;
 pub const AUTO_LOCK_ROW: usize = 2;
-pub const THEME_ROW: usize = 4;
-pub const CHANGE_PASSWORD_ROW: usize = 5;
-pub const IMPORT_ROW: usize = 6;
-pub const EXPORT_ROW: usize = 7;
+pub const THEME_ROW: usize = 3;
+pub const CHANGE_PASSWORD_ROW: usize = 4;
+pub const IMPORT_ROW: usize = 5;
+pub const EXPORT_ROW: usize = 6;
 
 pub fn handle_settings_input(app: &mut App, key: KeyCode) {
 	if app.exporting_database {
@@ -621,4 +621,16 @@ fn apply_selected_theme(app: &mut App) {
 			app.status = Some(format!("couldn't load theme \"{name}\": {err}"));
 		}
 	}
+}
+
+#[test]
+fn settings_rows_are_contiguous() {
+	assert_eq!(DATABASE_ROW, 0);
+	assert_eq!(KEYFILE_ROW, 1);
+	assert_eq!(AUTO_LOCK_ROW, 2);
+	assert_eq!(THEME_ROW, 3);
+	assert_eq!(CHANGE_PASSWORD_ROW, 4);
+	assert_eq!(IMPORT_ROW, 5);
+	assert_eq!(EXPORT_ROW, 6);
+	assert_eq!(ROW_COUNT, 7);
 }

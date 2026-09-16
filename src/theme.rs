@@ -26,7 +26,7 @@ pub struct Theme {
 	pub shell_shadow: Color,
 }
 
-const THEMES: &str = "~/.config/rama/themes";
+const THEMES: &str = "~/.config/kptui/themes";
 
 impl Default for Theme {
 	fn default() -> Self {

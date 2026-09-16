@@ -1,4 +1,11 @@
-# kptui 0.13.0
+[![version](https://img.shields.io/crates/v/kptui.svg)](https://crates.io/crates/kptui)
+[![build](https://github.com/pepa65/kptui/actions/workflows/rust.yml/badge.svg)](https://github.com/pepa65/kptui/actions/workflows/rust.yml)
+[![dependencies](https://deps.rs/repo/github/pepa65/kptui/status.svg)](https://deps.rs/repo/github/pepa65/kptui)
+[![docs](https://img.shields.io/badge/docs-kptui-blue.svg)](https://docs.rs/crate/kptui/latest)
+[![license](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://github.com/pepa65/kptui/blob/main/LICENSE)
+[![downloads](https://img.shields.io/crates/d/kptui.svg)](https://crates.io/crates/kptui)
+
+# kptui 0.13.1
 **TUI password manager built for [KeePass](https://keepass.info/) vaults**
 
 * Compatible with the `.kdbx` (4) file format.
@@ -19,11 +26,40 @@
 - **Import from other vaults or exports**: pull entries in from another `.kdbx` file, or from a CSV/JSON export produced by another password manager.
 
 ## Installing
-### From crates.io
-
-```sh
-cargo install kptui
+### Download static single-binary
 ```
+wget https://github.com/pepa65/kptui/releases/download/0.13.1/kptui
+sudo mv kptui /usr/local/bin
+sudo chown root:root /usr/local/bin/kptui
+sudo chmod +x /usr/local/bin/kptui
+```
+
+### Install with cargo
+#### Static musl build from cloned repo
+```
+# After git-cloning the repo
+rustup target add x86_64-unknown-linux-musl
+cargo build --release
+```
+
+#### Dynamic build with cargo
+`cargo install --git https://github.com/pepa65/kptui`
+
+### Install with cargo-binstall
+Even without a full Rust toolchain, rust binaries can be installed with the static binary `cargo-binstall`:
+
+```
+# Install cargo-binstall for Linux x86_64
+# (Other versions are available at https://crates.io/crates/cargo-binstall)
+wget github.com/cargo-bins/cargo-binstall/releases/latest/download/cargo-binstall-x86_64-unknown-linux-musl.tgz
+tar xf cargo-binstall-x86_64-unknown-linux-musl.tgz
+sudo chown root:root cargo-binstall
+sudo mv cargo-binstall /usr/local/bin/
+```
+
+Only a linux-x86_64 (musl) binary available: `cargo-binstall kptui`
+
+It will be installed in `~/.cargo/bin/` which will need to be added to `PATH`!
 
 ## Getting started
 * On first launch, if no vault is found at the configured path, `kptui` will:
@@ -38,13 +74,13 @@ keyfile = "~/passwords.keyx"
 ```
 
 ## Configuration
-Jaiba reads its config from `~/.config/kptui/config.toml`:
+Configfile is in `~/.config/kptui/config.toml`:
 
 ```toml
 default_database = "~/.local/share/kptui/default.kdbx"
 keyfile = "~/.local/share/kptui/default.keyx"  # Optional (omit for password-only vaults)
 auto_lock = 300  # Seconds of inactivity before locking
-theme = "catppuccin-mocha"
+theme = "melange_dark.toml"
 ```
 
 All fields are optional, the above are the defaults.

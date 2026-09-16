@@ -8,4 +8,4 @@ default_database = "~/.local/share/kptui/default.kdbx"
 auto_lock = 300
 
 # Name of a theme installed in ~/.config/kptui/themes/
-theme = "catppuccin-mocha"
+theme = "melange_dark.toml"
