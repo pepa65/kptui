@@ -75,7 +75,7 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 	let accent = Style::new().fg(theme.accent);
 	let warning = Style::new().fg(theme.warning);
 	let border_style = Style::new().fg(theme.border);
-	let placeholder = Style::new().fg(theme.border).italic();
+	let placeholder = Style::new().fg(theme.text).bold();
 	let editing_style = Style::new().fg(theme.selection_fg).bg(theme.selection_bg);
 	let label_style = Style::new().fg(theme.header).bold();
 
@@ -91,12 +91,10 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 		Line::from(Span::styled(value, normal))
 	};
 
-	let field = |label: &'static str, value: Line<'static>| -> ListItem<'static> {
-		ListItem::new(vec![
-			Line::from(Span::styled(label, label_style)),
-			value,
-			Line::from(""), // spacer
-		])
+	let field = |field_index: usize, label: &'static str, value: Line<'static>| -> ListItem<'static> {
+		let label_style = if selected == field_index { editing_style } else { label_style };
+
+		ListItem::new(vec![Line::from(Span::styled(label, label_style)), value, Line::from("")])
 	};
 
 	let database_value = app.config.default_database.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
@@ -113,6 +111,16 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 	};
 
 	let items = vec![
+		field(DATABASE_ROW, "Default database", render_value(DATABASE_ROW, database_value)),
+		field(KEYFILE_ROW, "Keyfile (optional)", render_value(KEYFILE_ROW, keyfile_value)),
+		field(AUTO_LOCK_ROW, "Auto-lock (seconds)", render_value(AUTO_LOCK_ROW, auto_lock_value)),
+		field(3, "Theme", theme_value),
+		field(4, "Change master password", Line::from(Span::styled("[Enter] to change", placeholder))),
+		field(5, "Import database", Line::from(Span::styled("[Enter] to import", placeholder))),
+		field(6, "Export database", Line::from(Span::styled("[Enter] to export", placeholder))),
+	];
+
+	/*let items = vec![
 		field("Default database", render_value(DATABASE_ROW, database_value)),
 		field("Keyfile (optional)", render_value(KEYFILE_ROW, keyfile_value)),
 		field("Auto-lock (seconds)", render_value(AUTO_LOCK_ROW, auto_lock_value)),
@@ -120,11 +128,9 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 		field("Change master password", Line::from(Span::styled("[Enter] to change", placeholder))),
 		field("Import database", Line::from(Span::styled("[Enter] to import", placeholder))),
 		field("Export database", Line::from(Span::styled("[Enter] to export", placeholder))),
-	];
+	];*/
 
-	let list = List::new(items)
-		.block(Block::default().borders(Borders::ALL).padding(Padding::horizontal(1)).border_style(border_style).title(" Settings "))
-		.highlight_style(editing_style.bold());
+	let list = List::new(items).block(Block::default().borders(Borders::ALL).padding(Padding::horizontal(1)).border_style(border_style).title(" Settings "));
 
 	frame.render_stateful_widget(list, vertical[0], &mut app.settings_state);
 
