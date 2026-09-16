@@ -1,28 +1,35 @@
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui_textarea::{TextArea, WrapMode};
 
 use crate::app::{App, Screen};
 use crate::db::{calculate_warnings, delete_entry, save_database};
 
 const FIELD_COUNT: usize = 7;
-const LAST_MODIFIED_INDEX: usize = 6;
+const NAME_INDEX: usize = 0;
+const USER_INDEX: usize = 1;
+const PASSWORD_INDEX: usize = 2;
+const URL_INDEX: usize = 3;
+const TOTP_INDEX: usize = 4;
+const LAST_MODIFIED_INDEX: usize = 5;
+const NOTES_INDEX: usize = 6;
 
-pub fn handle_edit_input(app: &mut App, key: KeyCode) {
+pub fn handle_edit_input(app: &mut App, key: KeyEvent) {
 	if app.editing_field {
 		handle_field_input(app, key);
 		return;
 	}
 
 	if app.confirm_exit {
-		handle_exit_confirmation(app, key);
+		handle_exit_confirmation(app, key.code);
 		return;
 	}
 
 	if app.confirm_delete {
-		handle_delete_confirmation(app, key);
+		handle_delete_confirmation(app, key.code);
 		return;
 	}
 
-	match crate::input::normalize_shortcut(key) {
+	match crate::input::normalize_shortcut(key.code) {
 		KeyCode::Esc => request_close_edit(app),
 
 		KeyCode::Enter => start_editing_field(app),
@@ -40,23 +47,62 @@ pub fn handle_edit_input(app: &mut App, key: KeyCode) {
 	}
 }
 
-fn handle_field_input(app: &mut App, key: KeyCode) {
-	match key {
+fn handle_field_input(app: &mut App, key: KeyEvent) {
+	let selected = app.edit_state.selected().unwrap_or(0);
+
+	if selected == NOTES_INDEX {
+		match key.code {
+			KeyCode::Esc => {
+				app.editing_field = false;
+				app.notes_textarea = None;
+			}
+
+			KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+				if let Some(textarea) = app.notes_textarea.as_mut() {
+					textarea.insert_newline();
+				}
+			}
+
+			KeyCode::Enter => {
+				commit_field(app);
+			}
+
+			_ => {
+				if let Some(textarea) = app.notes_textarea.as_mut() {
+					textarea.input(key);
+				}
+			}
+		}
+
+		return;
+	}
+
+	match key.code {
 		KeyCode::Esc => {
 			app.editing_field = false;
 			app.field_buffer.clear();
+			app.field_textarea = None;
+			app.notes_textarea = None;
 		}
 
 		KeyCode::Enter => commit_field(app),
 
-		KeyCode::Char(c) => app.field_buffer.push(c),
-
-		KeyCode::Backspace => {
-			app.field_buffer.pop();
+		_ => {
+			if let Some(textarea) = app.field_textarea.as_mut() {
+				textarea.input(key);
+			}
 		}
-
-		_ => {}
 	}
+}
+
+fn new_field_textarea(value: &str) -> TextArea<'static> {
+	TextArea::new(vec![value.to_owned()])
+}
+
+fn new_notes_textarea(notes: &str) -> TextArea<'static> {
+	let mut textarea = TextArea::new(notes.split('\n').map(str::to_owned).collect());
+	textarea.set_wrap_mode(WrapMode::WordOrGlyph);
+	textarea
 }
 
 fn move_selection(app: &mut App, delta: i32) {
@@ -77,41 +123,65 @@ fn start_editing_field(app: &mut App) {
 		return;
 	};
 
-	app.field_buffer = match selected {
-		0 => entry.name.clone(),
-		1 => entry.user.clone(),
-		2 => entry.password.clone(),
-		3 => entry.url.clone(),
-		4 => entry.totp.clone(),
-		5 => entry.notes.clone(),
-		_ => return,
-	};
+	match selected {
+		NAME_INDEX => {
+			app.field_textarea = Some(new_field_textarea(&entry.name));
+		}
 
+		USER_INDEX => {
+			app.field_textarea = Some(new_field_textarea(&entry.user));
+		}
+
+		PASSWORD_INDEX => {
+			app.field_textarea = Some(new_field_textarea(&entry.password));
+			app.reveal_password = true;
+		}
+
+		URL_INDEX => {
+			app.field_textarea = Some(new_field_textarea(&entry.url));
+		}
+
+		TOTP_INDEX => {
+			app.field_textarea = Some(new_field_textarea(&entry.totp));
+		}
+
+		NOTES_INDEX => {
+			app.notes_textarea = Some(new_notes_textarea(&entry.notes));
+		}
+
+		_ => return,
+	}
+
+	app.field_buffer.clear();
 	app.editing_field = true;
 	app.status = None;
-
-	if selected == 2 {
-		app.reveal_password = true;
-	}
 }
 
 fn commit_field(app: &mut App) {
 	let selected = app.edit_state.selected().unwrap_or(0);
-	let value = std::mem::take(&mut app.field_buffer);
+	let value = if selected == NOTES_INDEX {
+		app.notes_textarea.as_ref().map(|textarea| textarea.lines().join("\n")).unwrap_or_default()
+	} else {
+		app.field_textarea.as_ref().map(|textarea| textarea.lines().join("\n")).unwrap_or_default()
+	};
 
 	if let Some(entry) = app.edit_entry.as_mut() {
 		match selected {
-			0 => entry.name = value,
-			1 => entry.user = value,
-			2 => entry.password = value,
-			3 => entry.url = value,
-			4 => entry.totp = value,
-			5 => entry.notes = value,
+			NAME_INDEX => entry.name = value,
+			USER_INDEX => entry.user = value,
+			PASSWORD_INDEX => entry.password = value,
+			URL_INDEX => entry.url = value,
+			TOTP_INDEX => entry.totp = value,
+			NOTES_INDEX => entry.notes = value,
+			LAST_MODIFIED_INDEX => {}
 			_ => {}
 		}
 	}
 
 	app.editing_field = false;
+	app.field_buffer.clear();
+	app.field_textarea = None;
+	app.notes_textarea = None;
 }
 
 fn request_close_edit(app: &mut App) {

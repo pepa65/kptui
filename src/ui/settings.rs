@@ -10,6 +10,11 @@ use crate::app::App;
 use crate::input::settings::{AUTO_LOCK_ROW, DATABASE_ROW, KEYFILE_ROW};
 use crate::util::wrap_help_items;
 
+fn centered_cursor_x(input_area: Rect, typed_len: u16) -> u16 {
+	let inner = Block::default().borders(Borders::ALL).inner(input_area);
+	inner.x + (inner.width / 2).saturating_sub(typed_len / 2) + typed_len
+}
+
 fn nav_help_items(slim_mode: bool) -> &'static [&'static str] {
 	if slim_mode {
 		&["[↑↓]", "[Enter]", "[Esc]"]
@@ -187,8 +192,7 @@ fn draw_change_password(frame: &mut Frame, app: &mut App) {
 	frame.render_widget(hint, hint_area);
 
 	let typed_len = buf.chars().count() as u16;
-	let inner_width = input_area.width - 1;
-	let cursor_x = input_area.x + (inner_width.saturating_sub(typed_len) / 2) + typed_len;
+	let cursor_x = centered_cursor_x(input_area, typed_len);
 	frame.set_cursor_position((cursor_x, input_area.y + 1));
 
 	let accent = Style::new().fg(app.theme.accent);
@@ -252,8 +256,7 @@ fn draw_import(frame: &mut Frame, app: &mut App) {
 	frame.render_widget(hint, hint_area);
 
 	let typed_len = buf.chars().count() as u16;
-	let inner_width = input_area.width - 1;
-	let cursor_x = input_area.x + (inner_width.saturating_sub(typed_len) / 2) + typed_len;
+	let cursor_x = centered_cursor_x(input_area, typed_len);
 	frame.set_cursor_position((cursor_x, input_area.y + 1));
 
 	let accent = Style::new().fg(app.theme.accent);
@@ -322,8 +325,7 @@ fn draw_export(frame: &mut Frame, app: &mut App) {
 	frame.render_widget(hint, hint_area);
 
 	let typed_len = app.export_path_buffer.chars().count() as u16;
-	let inner_width = input_area.width - 1;
-	let cursor_x = input_area.x + (inner_width.saturating_sub(typed_len) / 2) + typed_len;
+	let cursor_x = centered_cursor_x(input_area, typed_len);
 	frame.set_cursor_position((cursor_x, input_area.y + 1));
 
 	let accent = Style::new().fg(app.theme.accent);

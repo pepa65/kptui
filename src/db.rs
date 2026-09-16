@@ -4,7 +4,6 @@ use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
-use chrono::Utc;
 use keepass::db::{EntryId, EntryMut, EntryRef, Times, fields};
 use keepass::{Database, DatabaseKey};
 
@@ -78,14 +77,8 @@ pub struct Entry {
 	pub duplicate_user_count: u32,
 }
 
-fn format_days_ago(dt: chrono::NaiveDateTime) -> String {
-	let days = (Utc::now().naive_utc() - dt).num_days();
-
-	match days {
-		d if d <= 0 => "today".to_string(),
-		1 => "1 day ago".to_string(),
-		d => format!("{d} days ago"),
-	}
+fn format_date_time(dt: chrono::NaiveDateTime) -> String {
+	dt.format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
 pub fn unlock_database(path: &Path, password: &str, keyfile_path: Option<&Path>) -> anyhow::Result<(Database, DatabaseKey, Vec<Entry>)> {
@@ -100,7 +93,7 @@ pub fn unlock_database(path: &Path, password: &str, keyfile_path: Option<&Path>)
 	let entries = db
 		.iter_all_entries()
 		.map(|e| {
-			let date_last_modify = e.times.last_modification.map(format_days_ago).unwrap_or_default();
+			let date_last_modify = e.times.last_modification.map(format_date_time).unwrap_or_default();
 
 			Entry {
 				id: Some(e.id()),

@@ -1,15 +1,23 @@
 use ratatui::{
 	Frame,
-	layout::{Constraint, Direction, Layout},
+	layout::{Constraint, Direction, Layout, Margin, Rect},
 	style::Style,
 	text::{Line, Span},
-	widgets::{Block, Borders, List, ListItem, Padding, Paragraph},
+	widgets::{Block, Borders, Clear, List, ListItem, Padding, Paragraph, Widget},
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::app::App;
 use crate::db::current_totp_code;
 use crate::util::wrap_help_items;
+
+const NAME_INDEX: usize = 0;
+const USER_INDEX: usize = 1;
+const PASSWORD_INDEX: usize = 2;
+const URL_INDEX: usize = 3;
+const TOTP_INDEX: usize = 4;
+const LAST_MODIFIED_INDEX: usize = 5;
+const NOTES_INDEX: usize = 6;
 
 fn nav_help_items(slim_mode: bool) -> &'static [&'static str] {
 	if slim_mode {
@@ -20,7 +28,7 @@ fn nav_help_items(slim_mode: bool) -> &'static [&'static str] {
 }
 
 fn field_help_items(slim_mode: bool) -> &'static [&'static str] {
-	if slim_mode { &["[Enter]", "[Esc]"] } else { &["[Enter] save field", "[Esc] cancel"] }
+	if slim_mode { &["[Enter]", "[Esc]"] } else { &["[^n] newline", "[Enter] save field", "[Esc] cancel"] }
 }
 
 fn wrap_notes(notes: &str, width: usize) -> Vec<String> {
@@ -92,20 +100,19 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) {
 
 	let is_new_entry = app.edit_target.is_none();
 	let editing_field = app.editing_field;
-	let field_buffer = app.field_buffer.clone();
 	let selected = app.edit_state.selected().unwrap_or(0);
-	let reveal_password = app.reveal_password;
 
 	let theme = &app.theme;
 	let label_style = Style::new().fg(theme.header).bold();
 	let normal = Style::new().fg(theme.text);
 	let warning = Style::new().fg(theme.warning);
-	let placeholder = Style::new().fg(theme.border).italic();
+	let placeholder = Style::new().fg(theme.text).italic();
 	let editing_style = Style::new().fg(theme.selection_fg).bg(theme.selection_bg);
-	let accent_style = Style::new().fg(theme.accent);
+	let accent_style = Style::new().fg(theme.selection_fg).bg(theme.accent);
 	let border_style = Style::new().fg(theme.border);
 
 	let help_items = if editing_field { field_help_items(app.slim_mode) } else { nav_help_items(app.slim_mode) };
+
 	let help_width = full_area.width.saturating_sub(2);
 	let help_lines = wrap_help_items(help_items, help_width);
 	let help_height = help_lines.len() as u16;
@@ -115,95 +122,172 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) {
 		.constraints([Constraint::Fill(1), Constraint::Length(help_height)])
 		.split(full_area);
 
-	let render_value = |field_index: usize, value: String, extra: Vec<Span<'static>>| -> Line<'static> {
-		if editing_field && selected == field_index {
-			return Line::from(vec![Span::styled(field_buffer.clone(), editing_style), Span::styled("▏", accent_style)]);
-		}
+	// The Notes area is outside the List. Calculate its geometry first,
+	// because both normal-mode wrapping and textarea rendering must use
+	// exactly the same width.
+	let list_area = vertical[0];
 
-		if value.is_empty() && extra.is_empty() {
-			return Line::from(Span::styled("(empty)", placeholder));
-		}
+	let inner = list_area.inner(Margin { horizontal: 1, vertical: 1 });
 
-		let mut spans = vec![Span::styled(value, normal)];
-		spans.extend(extra);
-		Line::from(spans)
+	// Six compact fields come before Notes:
+	//   0 Name
+	//   1 User
+	//   2 Password
+	//   3 URL
+	//   4 TOTP
+	//   5 Last modified
+	// Each occupies exactly one terminal row.
+	let notes_label_y = inner.y + 6;
+
+	let notes_label_area = Rect { x: inner.x + 1, y: notes_label_y, width: inner.width.saturating_sub(1), height: 1 };
+
+	let notes_area = Rect {
+		x: inner.x + 1,
+		y: notes_label_y + 1,
+		width: inner.width.saturating_sub(1),
+		height: inner.height.saturating_sub(7).max(1),
 	};
 
-	let user_extra = if duplicate_user_count > 1 { vec![Span::styled(format!(" [{duplicate_user_count}]"), warning)] } else { vec![] };
+	// Normal-mode wrapping uses exactly the same width as the editor.
+	let notes_width = notes_area.width.saturating_sub(1) as usize;
 
-	let mut password_extra = if password_reuse_count > 1 { vec![Span::styled(format!(" [{password_reuse_count}]"), warning)] } else { vec![] };
-	if password_is_set && reveal_password {
-		password_extra.push(Span::styled("  [visible]", warning));
-	}
-
-	let totp_code_line: Line<'static> = if editing_field && selected == 4 {
-		Line::from("")
-	} else {
-		match current_totp_code(&totp_raw) {
-			Some(totp) => Line::from(vec![
-				Span::styled(totp.code, normal.bold()),
-				Span::styled(format!("  (expires in {}s)", totp.valid_for.as_secs() + 1), warning),
-			]),
-			None if totp_raw.trim().is_empty() => Line::from(""),
-			None => Line::from(Span::styled("couldn't generate a code from the stored TOTP value", warning)),
-		}
-	};
-
-	let field = |label: &'static str, value: Line<'static>| -> ListItem<'static> {
-		ListItem::new(vec![
-			Line::from(Span::styled(label, label_style)),
-			value,
-			Line::from(""), // spacer between fields
-		])
-	};
-
-	let notes_width = vertical[0].width.saturating_sub(6) as usize;
-	let notes_lines: Vec<Line<'static>> = if editing_field && selected == 5 {
-		vec![Line::from(vec![Span::styled(field_buffer.clone(), editing_style), Span::styled("▏", accent_style)])]
-	} else if notes.is_empty() {
+	let notes_lines: Vec<Line<'static>> = if notes.is_empty() {
 		vec![Line::from(Span::styled("(empty)", placeholder))]
 	} else {
 		wrap_notes(&notes, notes_width).into_iter().map(|line| Line::from(Span::styled(line, normal))).collect()
 	};
 
-	let notes_field = |label: &'static str, lines: Vec<Line<'static>>| -> ListItem<'static> {
-		let mut content = vec![Line::from(Span::styled(label, label_style))];
-		content.extend(lines);
-		content.push(Line::from("")); // spacer between fields
-		ListItem::new(content)
+	// Compact single-line field.
+	// The actual editor is rendered as a TextArea overlay below,
+	// so the List only renders the normal field contents.
+	let compact_field = |field_index: usize, label: &'static str, value: String, extra: Vec<Span<'static>>| -> ListItem<'static> {
+		let label_style = if selected == field_index { editing_style } else { label_style };
+
+		let mut line = vec![Span::styled(label, label_style), Span::styled(": ", normal)];
+
+		if value.is_empty() && extra.is_empty() {
+			line.push(Span::styled("(empty)", placeholder));
+		} else {
+			line.push(Span::styled(value, normal));
+			line.extend(extra);
+		}
+
+		ListItem::new(Line::from(line))
 	};
 
-	let totp_field = |label: &'static str, value: Line<'static>, code_line: Line<'static>| -> ListItem<'static> {
-		ListItem::new(vec![
-			Line::from(Span::styled(label, label_style)),
-			value,
-			code_line,
-			Line::from(""), // spacer between fields
-		])
+	let user_extra = if duplicate_user_count > 1 { vec![Span::styled(format!(" [{duplicate_user_count}]"), warning)] } else { vec![] };
+
+	let mut password_extra = if password_reuse_count > 1 { vec![Span::styled(format!(" [{password_reuse_count}]"), warning)] } else { vec![] };
+
+	if password_is_set && app.reveal_password {
+		password_extra.push(Span::styled("  [visible]", warning));
+	}
+
+	// Viewing:  TOTP: 123456 (12s)  otpauth://...
+	// Editing:  TOTP: otpauth://...
+	let totp_extra = if editing_field && selected == TOTP_INDEX {
+		vec![]
+	} else {
+		match current_totp_code(&totp_raw) {
+			Some(totp) => {
+				let mut extra = vec![Span::styled(totp.code, normal.bold()), Span::styled(format!(" ({}s)", totp.valid_for.as_secs() + 1), warning)];
+
+				if !totp_raw.is_empty() {
+					extra.push(Span::styled(format!("  {totp_raw}"), normal));
+				}
+
+				extra
+			}
+
+			None if totp_raw.trim().is_empty() => {
+				vec![]
+			}
+
+			None => {
+				vec![Span::styled("couldn't generate a code", warning), Span::styled(format!("  {totp_raw}"), normal)]
+			}
+		}
 	};
+
+	let totp_value = String::new();
 
 	let items = vec![
-		field("Name", render_value(0, name, vec![])),
-		field("User", render_value(1, user, user_extra)),
-		field("Password", render_value(2, password_text, password_extra)),
-		field("URL", render_value(3, url, vec![])),
-		totp_field("TOTP", render_value(4, totp_raw, vec![]), totp_code_line),
-		notes_field("Notes", notes_lines),
-		field("Last modified", render_value(6, last_modified, vec![])),
+		compact_field(NAME_INDEX, "Name", name, vec![]),
+		compact_field(USER_INDEX, "User", user, user_extra),
+		compact_field(PASSWORD_INDEX, "Password", password_text, password_extra),
+		compact_field(URL_INDEX, "URL", url, vec![]),
+		compact_field(TOTP_INDEX, "TOTP", totp_value, totp_extra),
+		compact_field(LAST_MODIFIED_INDEX, "Last modified", last_modified, vec![]),
 	];
 
 	let title = if is_new_entry { " New Entry " } else { " Entry " };
 
-	let list = List::new(items)
-		.block(Block::default().borders(Borders::ALL).padding(Padding::horizontal(1)).border_style(border_style).title(title))
-		.highlight_style(editing_style);
+	let list = List::new(items).block(Block::default().borders(Borders::ALL).padding(Padding::horizontal(1)).border_style(border_style).title(title));
 
-	frame.render_stateful_widget(list, vertical[0], &mut app.edit_state);
+	// Notes is logical field 6 but is not part of the List.
+	// Give the List a local copy of the state so selecting Notes does
+	// not attempt to select a nonexistent seventh List item.
+	let mut list_state = app.edit_state;
+	if selected == NOTES_INDEX {
+		list_state.select(None);
+	} else {
+		list_state.select(Some(selected));
+	}
+	frame.render_stateful_widget(list, list_area, &mut list_state);
+	// Overlay the single-line textarea when editing Name/User/Password/URL/TOTP.
+	if editing_field && selected <= TOTP_INDEX {
+		if let Some(textarea) = app.field_textarea.as_mut() {
+			textarea.set_cursor_style(accent_style);
+
+			let inner = vertical[0].inner(Margin { horizontal: 1, vertical: 1 });
+
+			let label = match selected {
+				NAME_INDEX => "Name: ",
+				USER_INDEX => "User: ",
+				PASSWORD_INDEX => "Password: ",
+				URL_INDEX => "URL: ",
+				TOTP_INDEX => "TOTP: ",
+				_ => "",
+			};
+
+			let label_width = UnicodeWidthStr::width(label) as u16;
+
+			let space_area = Rect { x: inner.x + label_width, y: inner.y + selected as u16, width: 1, height: 1 };
+
+			frame.render_widget(Paragraph::new(" ").style(normal), space_area);
+
+			let field_area = Rect {
+				x: inner.x + label_width + 1,
+				y: inner.y + selected as u16,
+				width: inner.width.saturating_sub(label_width + 1),
+				height: 1,
+			};
+			frame.render_widget(Clear, field_area);
+			textarea.render(field_area, frame.buffer_mut());
+		}
+	}
+
+	// Notes label
+	let notes_label_style = if selected == NOTES_INDEX { editing_style } else { label_style };
+
+	let notes_label = Line::from(vec![Span::styled("Notes", notes_label_style), Span::styled(":", normal)]);
+
+	frame.render_widget(Paragraph::new(notes_label), notes_label_area);
+
+	if editing_field && selected == NOTES_INDEX {
+		if let Some(textarea) = app.notes_textarea.as_mut() {
+			frame.render_widget(Clear, notes_area);
+			textarea.render(notes_area, frame.buffer_mut());
+		}
+	} else {
+		frame.render_widget(Paragraph::new(notes_lines), notes_area);
+	}
 
 	let help = if let Some(status) = &app.status {
 		Paragraph::new(format!("  {status}")).style(Style::new().fg(app.theme.warning))
 	} else {
 		let help_text = help_lines.iter().map(|line| format!("  {line}")).collect::<Vec<_>>().join("\n");
+
 		Paragraph::new(help_text).style(Style::new().fg(app.theme.accent))
 	};
 

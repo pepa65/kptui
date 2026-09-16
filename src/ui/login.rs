@@ -184,8 +184,7 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 		app.password.chars().count() as u16
 	};
 
-	let inner_width = input_area.width - 1;
-	let cursor_x = input_area.x + (inner_width.saturating_sub(typed_len) / 2) + typed_len;
-
+	let inner = Block::default().borders(Borders::ALL).inner(input_area);
+	let cursor_x = inner.x + (inner.width / 2).saturating_sub(typed_len / 2) + typed_len;
 	frame.set_cursor_position((cursor_x, input_area.y + 1));
 }

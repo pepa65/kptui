@@ -10,6 +10,7 @@ use ratatui::{
 	style::Style,
 	widgets::{Block, ListState, TableState},
 };
+use ratatui_textarea::TextArea;
 use zeroize::Zeroizing;
 
 use crate::config::{Config, load_config};
@@ -63,6 +64,8 @@ pub struct App {
 	pub edit_target: Option<usize>,
 	pub editing_field: bool,
 	pub field_buffer: String,
+	pub field_textarea: Option<TextArea<'static>>,
+	pub notes_textarea: Option<TextArea<'static>>,
 	pub confirm_delete: bool,
 	pub confirm_exit: bool,
 	pub entries: Vec<Entry>,
@@ -239,6 +242,8 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 		edit_target: None,
 		editing_field: false,
 		field_buffer: String::new(),
+		field_textarea: None,
+		notes_textarea: None,
 		confirm_delete: false,
 		confirm_exit: false,
 		entries: Vec::new(),
@@ -274,7 +279,7 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 			match app.screen {
 				Screen::Login => handle_login_input(&mut app, key.code),
 				Screen::Index => handle_index_input(&mut app, key),
-				Screen::Edit => handle_edit_input(&mut app, key.code),
+				Screen::Edit => handle_edit_input(&mut app, key),
 				Screen::Settings => handle_settings_input(&mut app, key.code),
 			}
 		}
