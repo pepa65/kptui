@@ -11,6 +11,13 @@ readme = "README.md"
 keywords = ["password-manager", "keepass", "tui", "foss", "open-source"]
 categories = ["command-line-utilities"]
 
+[package.metadata.binstall]
+pkg-url = "{repo}/releases/download/{version}/{name}"
+pkg-fmt = "bin"
+disabled-strategies = ["quick-install", "compile"]
+target-family = "Linux"
+target-arch = "X86_64"
+
 [dependencies]
 ratatui = "0.30"
 crossterm = "0.29"
