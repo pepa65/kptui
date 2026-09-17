@@ -11,7 +11,6 @@ pub struct Theme {
 	pub text: Color,
 	pub warning: Color,
 	pub error: Color,
-	// pub success: Color,
 	pub border: Color,
 	pub header: Color,
 	pub accent: Color,

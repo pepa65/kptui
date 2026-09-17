@@ -57,7 +57,6 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 	let full_area = frame.area();
 
 	let editing_field = app.editing_field;
-	let field_buffer = app.field_buffer.clone();
 	let selected = app.settings_state.selected().unwrap_or(0);
 
 	let help_items = if editing_field { field_help_items(app.slim_mode) } else { nav_help_items(app.slim_mode) };
@@ -79,11 +78,7 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 	let editing_style = Style::new().fg(theme.selection_fg).bg(theme.selection_bg);
 	let label_style = Style::new().fg(theme.header).bold();
 
-	let render_value = |field_index: usize, value: String| -> Line<'static> {
-		if editing_field && selected == field_index {
-			return Line::from(vec![Span::styled(field_buffer.clone(), editing_style), Span::styled("▏", accent)]);
-		}
-
+	let render_value = |_field_index: usize, value: String| -> Line<'static> {
 		if value.is_empty() {
 			return Line::from(Span::styled("(not set)", placeholder));
 		}
@@ -133,6 +128,14 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 	let list = List::new(items).block(Block::default().borders(Borders::ALL).padding(Padding::horizontal(1)).border_style(border_style).title(" Settings "));
 
 	frame.render_stateful_widget(list, vertical[0], &mut app.settings_state);
+	if editing_field
+		&& selected < 3
+		&& let Some(textarea) = app.field_textarea.as_ref()
+	{
+		let list_area = vertical[0];
+		let textarea_area = Rect { x: list_area.x + 2, y: list_area.y + 2 + (selected as u16 * 3), width: list_area.width.saturating_sub(4), height: 1 };
+		frame.render_widget(textarea, textarea_area);
+	}
 
 	let help = if let Some(status) = &app.status {
 		Paragraph::new(format!("  {status}")).style(warning)
@@ -188,7 +191,7 @@ fn draw_change_password(frame: &mut Frame, app: &mut App) {
 
 	let default_hint = match app.password_change_step {
 		crate::app::PasswordChangeStep::Current => "verify current master password",
-		crate::app::PasswordChangeStep::New | crate::app::PasswordChangeStep::ConfirmNew => "this re-encrypts your database file with the new password",
+		crate::app::PasswordChangeStep::New | crate::app::PasswordChangeStep::ConfirmNew => "this re-encrypts the vault with the new password",
 	};
 	let hint_text = app.status.clone().unwrap_or_else(|| default_hint.to_string());
 	let hint_style = if app.status.is_some() { Style::new().fg(app.theme.error) } else { Style::new().fg(app.theme.warning) };
@@ -252,7 +255,7 @@ fn draw_import(frame: &mut Frame, app: &mut App) {
 
 	let default_hint = match app.import_step {
 		crate::app::ImportStep::Path => "only Name, User, Password, URL, TOTP and Notes are imported",
-		crate::app::ImportStep::KdbxPassword => "that file's master password, not this vault's",
+		crate::app::ImportStep::KdbxPassword => "that file's master password (not for this vault!)",
 	};
 	let hint_text = app.status.clone().unwrap_or_else(|| default_hint.to_string());
 	let hint_style = if app.status.is_some() { Style::new().fg(app.theme.error) } else { Style::new().fg(app.theme.warning) };
@@ -316,9 +319,9 @@ fn draw_export(frame: &mut Frame, app: &mut App) {
 			let overwrite = path.map(|p| p.exists()).unwrap_or(false);
 
 			match (plaintext, overwrite) {
-				(true, true) => "this overwrites an existing file with all passwords in PLAINTEXT — press Enter to confirm".to_string(),
-				(true, false) => "this writes all passwords in PLAINTEXT to disk — press Enter to confirm".to_string(),
-				(false, true) => "this overwrites an existing file — press Enter to confirm".to_string(),
+				(true, true) => "overwriting an existing file with all passwords in PLAINTEXT — press Enter to confirm".to_string(),
+				(true, false) => "writing all passwords in PLAINTEXT to disk — press Enter to confirm".to_string(),
+				(false, true) => "overwriting an existing file — press Enter to confirm".to_string(),
 				(false, false) => "press Enter to confirm".to_string(),
 			}
 		}

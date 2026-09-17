@@ -15,7 +15,7 @@ fn help_items(slim_mode: bool) -> &'static [&'static str] {
 	if slim_mode {
 		&["[↑↓]", "[^u]", "[^p]", "[^t]", "[^r]", "[^a]", "[^s]", "[Enter]", "[Esc]"]
 	} else {
-		&["[↑↓] navigate", "[^a] add_entry", "[^s] settings", "[Enter] expand_entry", "[Esc] quit"]
+		&["[↑↓] navigate", "[^a] add entry", "[^s] settings", "[Enter] view entry", "[Esc] quit"]
 	}
 }
 
@@ -123,8 +123,7 @@ pub fn draw_index(frame: &mut Frame, app: &mut App) {
 		.row_highlight_style(Style::new().fg(app.theme.selection_fg).bg(app.theme.selection_bg).bold());
 
 	if !app.slim_mode {
-		table_index =
-			table_index.header(Row::new(["  Name", "User", "Password", "Last Modify"]).style(Style::new().bold().fg(app.theme.header)).bottom_margin(1));
+		table_index = table_index.header(Row::new(["  Name", "User", "Password", "Modified"]).style(Style::new().bold().fg(app.theme.header)).bottom_margin(1));
 	}
 
 	let index_area = vertical[1];

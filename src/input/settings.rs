@@ -1,7 +1,8 @@
 use std::path::Path;
 use std::time::Duration;
 
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEvent};
+use ratatui_textarea::TextArea;
 
 use crate::app::{App, ExportStep, ImportStep, PasswordChangeStep, Screen};
 use crate::config::save_config;
@@ -19,24 +20,24 @@ pub const CHANGE_PASSWORD_ROW: usize = 4;
 pub const IMPORT_ROW: usize = 5;
 pub const EXPORT_ROW: usize = 6;
 
-pub fn handle_settings_input(app: &mut App, key: KeyCode) {
+pub fn handle_settings_input(app: &mut App, key: KeyEvent) {
 	if app.exporting_database {
-		handle_export_input(app, key);
+		handle_export_input(app, key.code);
 		return;
 	}
 
 	if app.importing_database {
-		handle_import_input(app, key);
+		handle_import_input(app, key.code);
 		return;
 	}
 
 	if app.changing_password {
-		handle_change_password_input(app, key);
+		handle_change_password_input(app, key.code);
 		return;
 	}
 
 	if app.choosing_theme {
-		handle_theme_picker_input(app, key);
+		handle_theme_picker_input(app, key.code);
 		return;
 	}
 
@@ -45,7 +46,7 @@ pub fn handle_settings_input(app: &mut App, key: KeyCode) {
 		return;
 	}
 
-	match key {
+	match key.code {
 		KeyCode::Down => {
 			app.status = None;
 			let selected = app.settings_state.selected().unwrap_or(0);
@@ -88,48 +89,57 @@ fn activate_selected(app: &mut App) {
 	}
 }
 
+fn new_settings_textarea(value: &str) -> TextArea<'static> {
+	TextArea::new(vec![value.to_owned()])
+}
+
 fn start_editing_database(app: &mut App) {
-	app.field_buffer = app.config.default_database.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
+	let value = app.config.default_database.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
+
+	app.field_textarea = Some(new_settings_textarea(&value));
 	app.editing_field = true;
 	app.status = None;
 }
 
 fn start_editing_keyfile(app: &mut App) {
-	app.field_buffer = app.config.keyfile.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
+	let value = app.config.keyfile.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
+
+	app.field_textarea = Some(new_settings_textarea(&value));
 	app.editing_field = true;
 	app.status = None;
 }
 
 fn start_editing_auto_lock(app: &mut App) {
-	app.field_buffer = app.config.auto_lock.as_secs().to_string();
+	app.field_textarea = Some(new_settings_textarea(&app.config.auto_lock.as_secs().to_string()));
 	app.editing_field = true;
 	app.status = None;
 }
 
-fn handle_field_input(app: &mut App, key: KeyCode) {
-	match key {
+fn handle_field_input(app: &mut App, key: KeyEvent) {
+	match key.code {
 		KeyCode::Esc => {
 			app.editing_field = false;
-			app.field_buffer.clear();
+			app.field_textarea = None;
 			app.status = None;
 		}
 
 		KeyCode::Enter => commit_field(app),
 
-		KeyCode::Char(c) => app.field_buffer.push(c),
-
-		KeyCode::Backspace => {
-			app.field_buffer.pop();
+		_ => {
+			if let Some(textarea) = app.field_textarea.as_mut() {
+				textarea.input(key);
+			}
 		}
-
-		_ => {}
 	}
 }
 
 fn commit_field(app: &mut App) {
 	let selected = app.settings_state.selected().unwrap_or(0);
-	let value = std::mem::take(&mut app.field_buffer);
+
+	let value = app.field_textarea.take().map(|textarea| textarea.into_lines().join("\n")).unwrap_or_default();
+
 	app.editing_field = false;
+	app.field_textarea = None;
 
 	match selected {
 		DATABASE_ROW => {

@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 use std::ffi::OsString;
-use std::fs::{self, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 use keepass::db::{EntryId, EntryMut, EntryRef, Times, fields};
 use keepass::{Database, DatabaseKey};
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 fn resolve_totp(e: &EntryRef) -> String {
 	if let Some(otp) = e.get_raw_otp_value()
@@ -63,8 +64,9 @@ fn urlencoding_encode(input: &str) -> String {
 	out
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Zeroize, ZeroizeOnDrop)]
 pub struct Entry {
+	#[zeroize(skip)]
 	pub id: Option<EntryId>,
 	pub name: String,
 	pub user: String,
@@ -82,7 +84,7 @@ fn format_date_time(dt: chrono::NaiveDateTime) -> String {
 }
 
 pub fn unlock_database(path: &Path, password: &str, keyfile_path: Option<&Path>) -> anyhow::Result<(Database, DatabaseKey, Vec<Entry>)> {
-	let mut file = fs::File::open(path).with_context(|| format!("couldn't open {}", path.display()))?;
+	let mut file = File::open(path).with_context(|| format!("couldn't open {}", path.display()))?;
 
 	let key = build_database_key(password, keyfile_path)?;
 	let db = Database::open(&mut file, key.clone()).map_err(|err| match keyfile_path {
@@ -134,7 +136,7 @@ pub fn build_database_key(password: &str, keyfile_path: Option<&Path>) -> anyhow
 	let mut key = DatabaseKey::new().with_password(password);
 
 	if let Some(path) = keyfile_path {
-		let mut keyfile = fs::File::open(path).with_context(|| format!("couldn't open keyfile {}", path.display()))?;
+		let mut keyfile = File::open(path).with_context(|| format!("couldn't open keyfile {}", path.display()))?;
 
 		if keyfile.metadata().with_context(|| format!("couldn't inspect keyfile {}", path.display()))?.len() == 0 {
 			anyhow::bail!("keyfile {} is empty", path.display());
@@ -207,11 +209,11 @@ pub fn delete_entry(path: &Path, key: &DatabaseKey, db: &mut Database, id: Entry
 
 fn apply_fields(e: &mut EntryMut<'_>, entry: &Entry) {
 	e.set_unprotected(fields::TITLE, entry.name.clone());
-	e.set_unprotected(fields::USERNAME, entry.user.clone());
+	e.set_protected(fields::USERNAME, entry.user.clone());
 	e.set_protected(fields::PASSWORD, entry.password.clone());
 	e.set_unprotected(fields::URL, entry.url.clone());
-	e.set_unprotected(fields::OTP, entry.totp.clone());
-	e.set_unprotected(fields::NOTES, entry.notes.clone());
+	e.set_protected(fields::OTP, entry.totp.clone());
+	e.set_protected(fields::NOTES, entry.notes.clone());
 	e.times.last_modification = Some(Times::now());
 }
 

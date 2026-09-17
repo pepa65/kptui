@@ -93,4 +93,5 @@ All fields are optional, the above are the defaults.
 * The keyfile's path is stored in the config, never its contents.
 * Changing the master password re-encrypts the whole vault in place, and requires entering the _current_ password first.
   For a keyfile-protected vault, the configured keyfile remains part of the new composite key.
-* The app locks itself after `auto_lock` seconds of inactivity, clearing decrypted entries and the master password from memory.
+* The app locks after `auto_lock` seconds of inactivity, clearing decrypted entries and the master password from memory.
+* When the app is open and the vault not locked, secrets are kept in memory.

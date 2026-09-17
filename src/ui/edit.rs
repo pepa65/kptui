@@ -135,7 +135,7 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) {
 	//   2 Password
 	//   3 URL
 	//   4 TOTP
-	//   5 Last modified
+	//   5 Modified
 	// Each occupies exactly one terminal row.
 	let notes_label_y = inner.y + 6;
 
@@ -217,7 +217,7 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) {
 		compact_field(PASSWORD_INDEX, "Password", password_text, password_extra),
 		compact_field(URL_INDEX, "URL", url, vec![]),
 		compact_field(TOTP_INDEX, "TOTP", totp_value, totp_extra),
-		compact_field(LAST_MODIFIED_INDEX, "Last modified", last_modified, vec![]),
+		compact_field(LAST_MODIFIED_INDEX, "Modified", last_modified, vec![]),
 	];
 
 	let title = if is_new_entry { " New Entry " } else { " Entry " };
@@ -235,36 +235,31 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) {
 	}
 	frame.render_stateful_widget(list, list_area, &mut list_state);
 	// Overlay the single-line textarea when editing Name/User/Password/URL/TOTP.
-	if editing_field && selected <= TOTP_INDEX {
-		if let Some(textarea) = app.field_textarea.as_mut() {
-			textarea.set_cursor_style(accent_style);
-
-			let inner = vertical[0].inner(Margin { horizontal: 1, vertical: 1 });
-
-			let label = match selected {
-				NAME_INDEX => "Name: ",
-				USER_INDEX => "User: ",
-				PASSWORD_INDEX => "Password: ",
-				URL_INDEX => "URL: ",
-				TOTP_INDEX => "TOTP: ",
-				_ => "",
-			};
-
-			let label_width = UnicodeWidthStr::width(label) as u16;
-
-			let space_area = Rect { x: inner.x + label_width, y: inner.y + selected as u16, width: 1, height: 1 };
-
-			frame.render_widget(Paragraph::new(" ").style(normal), space_area);
-
-			let field_area = Rect {
-				x: inner.x + label_width + 1,
-				y: inner.y + selected as u16,
-				width: inner.width.saturating_sub(label_width + 1),
-				height: 1,
-			};
-			frame.render_widget(Clear, field_area);
-			textarea.render(field_area, frame.buffer_mut());
-		}
+	if editing_field
+		&& selected <= TOTP_INDEX
+		&& let Some(textarea) = app.field_textarea.as_mut()
+	{
+		textarea.set_cursor_style(accent_style);
+		let inner = vertical[0].inner(Margin { horizontal: 1, vertical: 1 });
+		let label = match selected {
+			NAME_INDEX => "Name: ",
+			USER_INDEX => "User: ",
+			PASSWORD_INDEX => "Password: ",
+			URL_INDEX => "URL: ",
+			TOTP_INDEX => "TOTP: ",
+			_ => "",
+		};
+		let label_width = UnicodeWidthStr::width(label) as u16;
+		let space_area = Rect { x: inner.x + label_width, y: inner.y + selected as u16, width: 1, height: 1 };
+		frame.render_widget(Paragraph::new(" ").style(normal), space_area);
+		let field_area = Rect {
+			x: inner.x + label_width + 1,
+			y: inner.y + selected as u16,
+			width: inner.width.saturating_sub(label_width + 1),
+			height: 1,
+		};
+		frame.render_widget(Clear, field_area);
+		textarea.render(field_area, frame.buffer_mut());
 	}
 
 	// Notes label
@@ -275,7 +270,7 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) {
 	frame.render_widget(Paragraph::new(notes_label), notes_label_area);
 
 	if editing_field && selected == NOTES_INDEX {
-		if let Some(textarea) = app.notes_textarea.as_mut() {
+		if let Some(textarea) = app.field_textarea.as_mut() {
 			frame.render_widget(Clear, notes_area);
 			textarea.render(notes_area, frame.buffer_mut());
 		}

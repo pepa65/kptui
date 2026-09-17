@@ -30,7 +30,11 @@ toml = "1"
 keepass = { version = "0.14", features = ["save_kdbx4", "totp"] }
 chrono = "0.4"
 unicode-width = "0.2"
-zeroize = "1"
+zeroize = { version = "1", features = ["derive"] }
 
 [profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
 strip = true

@@ -48,44 +48,21 @@ pub fn handle_edit_input(app: &mut App, key: KeyEvent) {
 }
 
 fn handle_field_input(app: &mut App, key: KeyEvent) {
-	let selected = app.edit_state.selected().unwrap_or(0);
-
-	if selected == NOTES_INDEX {
-		match key.code {
-			KeyCode::Esc => {
-				app.editing_field = false;
-				app.notes_textarea = None;
-			}
-
-			KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-				if let Some(textarea) = app.notes_textarea.as_mut() {
-					textarea.insert_newline();
-				}
-			}
-
-			KeyCode::Enter => {
-				commit_field(app);
-			}
-
-			_ => {
-				if let Some(textarea) = app.notes_textarea.as_mut() {
-					textarea.input(key);
-				}
-			}
-		}
-
-		return;
-	}
-
 	match key.code {
 		KeyCode::Esc => {
 			app.editing_field = false;
-			app.field_buffer.clear();
 			app.field_textarea = None;
-			app.notes_textarea = None;
 		}
 
-		KeyCode::Enter => commit_field(app),
+		KeyCode::Enter => {
+			commit_field(app);
+		}
+
+		KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+			if let Some(textarea) = app.field_textarea.as_mut() {
+				textarea.insert_newline();
+			}
+		}
 
 		_ => {
 			if let Some(textarea) = app.field_textarea.as_mut() {
@@ -95,13 +72,11 @@ fn handle_field_input(app: &mut App, key: KeyEvent) {
 	}
 }
 
-fn new_field_textarea(value: &str) -> TextArea<'static> {
-	TextArea::new(vec![value.to_owned()])
-}
-
-fn new_notes_textarea(notes: &str) -> TextArea<'static> {
-	let mut textarea = TextArea::new(notes.split('\n').map(str::to_owned).collect());
-	textarea.set_wrap_mode(WrapMode::WordOrGlyph);
+fn new_field_textarea(field: &str, wrap: bool) -> TextArea<'static> {
+	let mut textarea = TextArea::new(field.split('\n').map(str::to_owned).collect());
+	if wrap {
+		textarea.set_wrap_mode(WrapMode::WordOrGlyph);
+	}
 	textarea
 }
 
@@ -125,46 +100,40 @@ fn start_editing_field(app: &mut App) {
 
 	match selected {
 		NAME_INDEX => {
-			app.field_textarea = Some(new_field_textarea(&entry.name));
+			app.field_textarea = Some(new_field_textarea(&entry.name, false));
 		}
 
 		USER_INDEX => {
-			app.field_textarea = Some(new_field_textarea(&entry.user));
+			app.field_textarea = Some(new_field_textarea(&entry.user, false));
 		}
 
 		PASSWORD_INDEX => {
-			app.field_textarea = Some(new_field_textarea(&entry.password));
+			app.field_textarea = Some(new_field_textarea(&entry.password, false));
 			app.reveal_password = true;
 		}
 
 		URL_INDEX => {
-			app.field_textarea = Some(new_field_textarea(&entry.url));
+			app.field_textarea = Some(new_field_textarea(&entry.url, false));
 		}
 
 		TOTP_INDEX => {
-			app.field_textarea = Some(new_field_textarea(&entry.totp));
+			app.field_textarea = Some(new_field_textarea(&entry.totp, false));
 		}
 
 		NOTES_INDEX => {
-			app.notes_textarea = Some(new_notes_textarea(&entry.notes));
+			app.field_textarea = Some(new_field_textarea(&entry.notes, true));
 		}
 
 		_ => return,
 	}
 
-	app.field_buffer.clear();
 	app.editing_field = true;
 	app.status = None;
 }
 
 fn commit_field(app: &mut App) {
 	let selected = app.edit_state.selected().unwrap_or(0);
-	let value = if selected == NOTES_INDEX {
-		app.notes_textarea.as_ref().map(|textarea| textarea.lines().join("\n")).unwrap_or_default()
-	} else {
-		app.field_textarea.as_ref().map(|textarea| textarea.lines().join("\n")).unwrap_or_default()
-	};
-
+	let value = app.field_textarea.take().map(|textarea| textarea.into_lines().join("\n")).unwrap_or_default();
 	if let Some(entry) = app.edit_entry.as_mut() {
 		match selected {
 			NAME_INDEX => entry.name = value,
@@ -179,9 +148,7 @@ fn commit_field(app: &mut App) {
 	}
 
 	app.editing_field = false;
-	app.field_buffer.clear();
 	app.field_textarea = None;
-	app.notes_textarea = None;
 }
 
 fn request_close_edit(app: &mut App) {
@@ -238,7 +205,7 @@ fn reset_edit_state(app: &mut App) {
 	app.edit_original = None;
 	app.edit_target = None;
 	app.editing_field = false;
-	app.field_buffer.clear();
+	app.field_textarea = None;
 	app.confirm_delete = false;
 	app.confirm_exit = false;
 	app.reveal_password = false;
