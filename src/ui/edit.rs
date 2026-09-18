@@ -234,13 +234,15 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) {
 		list_state.select(Some(selected));
 	}
 	frame.render_stateful_widget(list, list_area, &mut list_state);
-	// Overlay the single-line textarea when editing Name/User/Password/URL/TOTP.
+	// Overlay the single-line field editor when editing Name/User/Password/URL/TOTP.
 	if editing_field
 		&& selected <= TOTP_INDEX
-		&& let Some(textarea) = app.field_textarea.as_mut()
+		&& let Some(editor) = app.field_editor.as_ref()
 	{
-		textarea.set_cursor_style(accent_style);
+		editor.set_cursor_style(accent_style);
+
 		let inner = vertical[0].inner(Margin { horizontal: 1, vertical: 1 });
+
 		let label = match selected {
 			NAME_INDEX => "Name: ",
 			USER_INDEX => "User: ",
@@ -249,17 +251,18 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) {
 			TOTP_INDEX => "TOTP: ",
 			_ => "",
 		};
+
 		let label_width = UnicodeWidthStr::width(label) as u16;
-		let space_area = Rect { x: inner.x + label_width, y: inner.y + selected as u16, width: 1, height: 1 };
-		frame.render_widget(Paragraph::new(" ").style(normal), space_area);
+
 		let field_area = Rect {
-			x: inner.x + label_width + 1,
+			x: inner.x + label_width,
 			y: inner.y + selected as u16,
-			width: inner.width.saturating_sub(label_width + 1),
+			width: inner.width.saturating_sub(label_width),
 			height: 1,
 		};
+
 		frame.render_widget(Clear, field_area);
-		textarea.render(field_area, frame.buffer_mut());
+		editor.render(field_area, frame.buffer_mut());
 	}
 
 	// Notes label
@@ -270,9 +273,40 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) {
 	frame.render_widget(Paragraph::new(notes_label), notes_label_area);
 
 	if editing_field && selected == NOTES_INDEX {
-		if let Some(textarea) = app.field_textarea.as_mut() {
+		if let Some(editor) = app.field_editor.as_ref() {
 			frame.render_widget(Clear, notes_area);
-			textarea.render(notes_area, frame.buffer_mut());
+
+			let wrapped = wrap_notes(editor.text(), notes_width);
+
+			let before_cursor = &editor.text()[..editor.cursor()];
+			let cursor_lines = wrap_notes(before_cursor, notes_width);
+
+			let cursor_row = cursor_lines.len().saturating_sub(1);
+			let cursor_col = cursor_lines.last().map(|line| UnicodeWidthStr::width(line.as_str())).unwrap_or(0);
+
+			let visible_height = notes_area.height as usize;
+
+			if cursor_row < app.field_editor_scroll {
+				app.field_editor_scroll = cursor_row;
+			} else if cursor_row >= app.field_editor_scroll + visible_height {
+				app.field_editor_scroll = cursor_row - visible_height + 1;
+			}
+
+			let visible_lines = wrapped
+				.iter()
+				.skip(app.field_editor_scroll)
+				.take(visible_height)
+				.map(|line| Line::from(Span::styled(line.clone(), normal)))
+				.collect::<Vec<_>>();
+
+			frame.render_widget(Paragraph::new(visible_lines), notes_area);
+
+			let x = notes_area.x + cursor_col as u16;
+			let y = notes_area.y + cursor_row.saturating_sub(app.field_editor_scroll) as u16;
+
+			if let Some(cell) = frame.buffer_mut().cell_mut((x, y)) {
+				cell.set_style(accent_style);
+			}
 		}
 	} else {
 		frame.render_widget(Paragraph::new(notes_lines), notes_area);

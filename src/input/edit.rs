@@ -3,6 +3,7 @@ use ratatui_textarea::{TextArea, WrapMode};
 
 use crate::app::{App, Screen};
 use crate::db::{calculate_warnings, delete_entry, save_database};
+use crate::input::fieldedit::{EditAction, FieldEditor};
 
 const FIELD_COUNT: usize = 7;
 const NAME_INDEX: usize = 0;
@@ -51,7 +52,7 @@ fn handle_field_input(app: &mut App, key: KeyEvent) {
 	match key.code {
 		KeyCode::Esc => {
 			app.editing_field = false;
-			app.field_textarea = None;
+			app.field_editor = None;
 		}
 
 		KeyCode::Enter => {
@@ -59,15 +60,13 @@ fn handle_field_input(app: &mut App, key: KeyEvent) {
 		}
 
 		KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-			if let Some(textarea) = app.field_textarea.as_mut() {
-				textarea.insert_newline();
+			if let Some(editor) = app.field_editor.as_mut() {
+				editor.insert_newline();
 			}
 		}
 
 		_ => {
-			if let Some(textarea) = app.field_textarea.as_mut() {
-				textarea.input(key);
-			}
+			handle_editor_input(app, key);
 		}
 	}
 }
@@ -100,28 +99,28 @@ fn start_editing_field(app: &mut App) {
 
 	match selected {
 		NAME_INDEX => {
-			app.field_textarea = Some(new_field_textarea(&entry.name, false));
+			app.field_editor = Some(FieldEditor::with_text(&entry.name, false));
 		}
 
 		USER_INDEX => {
-			app.field_textarea = Some(new_field_textarea(&entry.user, false));
+			app.field_editor = Some(FieldEditor::with_text(&entry.user, false));
 		}
 
 		PASSWORD_INDEX => {
-			app.field_textarea = Some(new_field_textarea(&entry.password, false));
+			app.field_editor = Some(FieldEditor::with_text(&entry.password, false));
 			app.reveal_password = true;
 		}
 
 		URL_INDEX => {
-			app.field_textarea = Some(new_field_textarea(&entry.url, false));
+			app.field_editor = Some(FieldEditor::with_text(&entry.url, false));
 		}
 
 		TOTP_INDEX => {
-			app.field_textarea = Some(new_field_textarea(&entry.totp, false));
+			app.field_editor = Some(FieldEditor::with_text(&entry.totp, false));
 		}
 
 		NOTES_INDEX => {
-			app.field_textarea = Some(new_field_textarea(&entry.notes, true));
+			app.field_editor = Some(FieldEditor::with_text(&entry.notes));
 		}
 
 		_ => return,
@@ -133,7 +132,13 @@ fn start_editing_field(app: &mut App) {
 
 fn commit_field(app: &mut App) {
 	let selected = app.edit_state.selected().unwrap_or(0);
-	let value = app.field_textarea.take().map(|textarea| textarea.into_lines().join("\n")).unwrap_or_default();
+
+	let value = app
+		.field_editor
+		.take()
+		.map(|editor| editor.into_text())
+		.unwrap_or_default();
+
 	if let Some(entry) = app.edit_entry.as_mut() {
 		match selected {
 			NAME_INDEX => entry.name = value,
@@ -148,7 +153,6 @@ fn commit_field(app: &mut App) {
 	}
 
 	app.editing_field = false;
-	app.field_textarea = None;
 }
 
 fn request_close_edit(app: &mut App) {
@@ -205,7 +209,7 @@ fn reset_edit_state(app: &mut App) {
 	app.edit_original = None;
 	app.edit_target = None;
 	app.editing_field = false;
-	app.field_textarea = None;
+	app.field_editor = None;
 	app.confirm_delete = false;
 	app.confirm_exit = false;
 	app.reveal_password = false;

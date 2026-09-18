@@ -16,6 +16,7 @@ use zeroize::Zeroizing;
 use crate::config::{Config, load_config};
 use crate::db::Entry;
 use crate::input::edit::handle_edit_input;
+use crate::input::fieldedit::FieldEditor;
 use crate::input::index::handle_index_input;
 use crate::input::login::handle_login_input;
 use crate::input::settings::handle_settings_input;
@@ -64,6 +65,8 @@ pub struct App {
 	pub edit_target: Option<usize>,
 	pub editing_field: bool,
 	pub field_textarea: Option<TextArea<'static>>,
+	pub field_editor: Option<FieldEditor>,
+	pub field_editor_scroll: usize,
 	pub confirm_delete: bool,
 	pub confirm_exit: bool,
 	pub entries: Vec<Entry>,
@@ -162,6 +165,8 @@ fn maybe_auto_lock(app: &mut App) {
 	app.edit_target = None;
 	app.editing_field = false;
 	app.field_textarea = None;
+	app.field_editor = None;
+	app.field_editor_scroll = 0;
 	app.confirm_delete = false;
 	app.confirm_exit = false;
 	app.reveal_password = false;
@@ -240,6 +245,8 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 		edit_target: None,
 		editing_field: false,
 		field_textarea: None,
+		field_editor: None,
+		field_editor_scroll: 0,
 		confirm_delete: false,
 		confirm_exit: false,
 		entries: Vec::new(),

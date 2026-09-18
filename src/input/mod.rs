@@ -1,5 +1,6 @@
 pub mod command;
 pub mod edit;
+pub mod fieldedit;
 pub mod index;
 pub mod login;
 pub mod settings;
