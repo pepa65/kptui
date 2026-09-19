@@ -12,11 +12,14 @@ keywords = ["password-manager", "keepass", "tui", "foss", "open-source"]
 categories = ["command-line-utilities"]
 
 [package.metadata.binstall]
-pkg-url = "{repo}/releases/download/{version}/{name}"
 pkg-fmt = "bin"
 disabled-strategies = ["quick-install", "compile"]
-target-family = "Linux"
-target-arch = "X86_64"
+
+[package.metadata.binstall.overrides.'cfg(all(target_os = "linux", target_arch = "x86_64"))']
+pkg-url = "{repo}/releases/download/{version}/{name}"
+
+[package.metadata.binstall.overrides.aarch64-linux-android]
+pkg-url = "{repo}/releases/download/{version}/{name}_android"
 
 [dependencies]
 ratatui = "0.30"

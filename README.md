@@ -6,7 +6,7 @@
 [![downloads](https://img.shields.io/crates/d/kptui.svg)](https://crates.io/crates/kptui)
 
 # kptui 0.16.0
-**TUI password manager built for [KeePass](https://keepass.info/) vaults**
+**TUI password manager for [KeePass](https://keepass.info/) vaults**
 
 * Compatible with the `.kdbx` (4) file format.
 * Fits in with the wider KeePass ecosystem.
@@ -94,4 +94,5 @@ All fields are optional, the above are the defaults.
 * Changing the master password re-encrypts the whole vault in place, and requires entering the _current_ password first.
   For a keyfile-protected vault, the configured keyfile remains part of the new composite key.
 * The app locks after `auto_lock` seconds of inactivity, clearing decrypted entries and the master password from memory.
-* When the app is open and the vault not locked, secrets are kept in memory.
+  All edits and changes will be lost.
+* When the app is open and the vault not locked, secrets are kept in memory!
