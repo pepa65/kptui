@@ -5,7 +5,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::app::{App, ExportStep, ImportStep, PasswordChangeStep, Screen};
 use crate::config::save_config;
-use crate::db::{Entry, build_database_key, calculate_warnings, save_database, unlock_database};
+use crate::db::{Entry, build_database_key, save_database, unlock_database};
 use crate::input::fieldedit::{EditAction, FieldEditor};
 use crate::theme::load_theme;
 use crate::util::expand_tilde;
@@ -415,7 +415,6 @@ fn finish_import(app: &mut App, imported: Vec<Entry>, source: &Path) {
 		app.entries.push(entry);
 	}
 
-	calculate_warnings(&mut app.entries);
 	app.refresh_filter();
 
 	let (Some(path), Some(key), Some(db)) = (app.config.default_database.clone(), app.db_key.clone(), app.kdbx.as_mut()) else {

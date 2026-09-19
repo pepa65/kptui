@@ -1,10 +1,12 @@
 use crate::app::App;
+use crate::app::Screen::{Edit, Settings};
 use crate::db::Entry;
+use crate::input::fieldedit::FieldEditor;
 
 pub fn handle_shortcut(app: &mut App, c: char) {
 	match c {
 		'a' => add_entry(app),
-		's' => open_settings(app),
+		'c' => open_settings(app),
 		_ => {}
 	}
 }
@@ -14,10 +16,11 @@ fn add_entry(app: &mut App) {
 	app.edit_original = Some(Entry::default());
 	app.edit_target = None;
 	app.edit_state.select(Some(0));
-	app.reveal_password = false;
+	app.field_editor = Some(FieldEditor::with_text(""));
+	app.editing_field = true;
 	app.confirm_delete = false;
 	app.confirm_exit = false;
-	app.screen = crate::app::Screen::Edit;
+	app.screen = Edit;
 }
 
 pub fn preview_entry(app: &mut App) {
@@ -35,10 +38,9 @@ pub fn preview_entry(app: &mut App) {
 	app.edit_original = Some(entry.clone());
 	app.edit_target = Some(entry_idx);
 	app.edit_state.select(Some(0));
-	app.reveal_password = false;
 	app.confirm_delete = false;
 	app.confirm_exit = false;
-	app.screen = crate::app::Screen::Edit;
+	app.screen = Edit;
 }
 
 fn open_settings(app: &mut App) {
@@ -53,5 +55,5 @@ fn open_settings(app: &mut App) {
 	let selected = current_idx.or(if app.available_themes.is_empty() { None } else { Some(0) });
 
 	app.settings_state.select(selected);
-	app.screen = crate::app::Screen::Settings;
+	app.screen = Settings;
 }

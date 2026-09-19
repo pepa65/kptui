@@ -16,27 +16,23 @@ fn centered_cursor_x(input_area: Rect, typed_len: u16) -> u16 {
 }
 
 fn nav_help_items(slim_mode: bool) -> &'static [&'static str] {
-	if slim_mode {
-		&["[↑↓]", "[Enter]", "[Esc]"]
-	} else {
-		&["[↑↓] navigate", "[Enter] edit / choose theme", "[Esc] back"]
-	}
+	if slim_mode { &["[↑↓]", "[Enter]", "[Esc]"] } else { &["[↑↓] Navigate", "[Enter] Modify", "[Esc] Back"] }
 }
 
 fn field_help_items(slim_mode: bool) -> &'static [&'static str] {
-	if slim_mode { &["[Enter]", "[Esc]"] } else { &["[Enter] save", "[Esc] cancel"] }
+	if slim_mode { &["[Enter]", "[Esc]"] } else { &["[Enter] Save", "[Esc] Cancel"] }
 }
 
 fn change_password_help_items(slim_mode: bool) -> &'static [&'static str] {
-	if slim_mode { &["[Enter]", "[Esc]"] } else { &["[Enter] confirm", "[Esc] cancel"] }
+	if slim_mode { &["[Enter]", "[Esc]"] } else { &["[Enter] Confirm", "[Esc] Cancel"] }
 }
 
 fn export_help_items(slim_mode: bool) -> &'static [&'static str] {
-	if slim_mode { &["[Enter]", "[Esc]"] } else { &["[Enter] continue", "[Esc] cancel"] }
+	if slim_mode { &["[Enter]", "[Esc]"] } else { &["[Enter] Continue", "[Esc] Cancel"] }
 }
 
 fn import_help_items(slim_mode: bool) -> &'static [&'static str] {
-	if slim_mode { &["[Enter]", "[Esc]"] } else { &["[Enter] continue", "[Esc] cancel"] }
+	if slim_mode { &["[Enter]", "[Esc]"] } else { &["[Enter] Continue", "[Esc] Cancel"] }
 }
 
 pub fn draw_settings(frame: &mut Frame, app: &mut App) {
@@ -117,17 +113,17 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 		]),
 		ListItem::new(vec![
 			Line::from(Span::styled("Change master password", if selected == 4 { editing_style } else { label_style })),
-			Line::from(Span::styled("[Enter] to change", placeholder)),
+			Line::from(Span::styled("[Enter] Change", placeholder)),
 			Line::from(""),
 		]),
 		ListItem::new(vec![
 			Line::from(Span::styled("Import database", if selected == 5 { editing_style } else { label_style })),
-			Line::from(Span::styled("[Enter] to import", placeholder)),
+			Line::from(Span::styled("[Enter] Import", placeholder)),
 			Line::from(""),
 		]),
 		ListItem::new(vec![
 			Line::from(Span::styled("Export database", if selected == 6 { editing_style } else { label_style })),
-			Line::from(Span::styled("[Enter] to export", placeholder)),
+			Line::from(Span::styled("[Enter] Export", placeholder)),
 			Line::from(""),
 		]),
 	];

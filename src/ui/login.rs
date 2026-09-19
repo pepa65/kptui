@@ -47,7 +47,7 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 			(" New master password ", BoxContent::Masked(&app.password))
 		}
 	} else if missing {
-		(" No database found ", BoxContent::Static("Press [n] to create a new database"))
+		(" No database found ", BoxContent::Static("[c] Create a new database"))
 	} else {
 		("", BoxContent::Masked(&app.password))
 	};
@@ -73,7 +73,12 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 			Line::from(vec![Span::styled("         ███", claws_light_style), Span::styled("                  ███         ", claws_style)]),
 			Line::from(vec![Span::styled("        ██", claws_light_style), Span::styled("█        kptui       ███        ", claws_style)]),
 			Line::from(vec![Span::styled("       ██", claws_light_style), Span::styled("█   █              █   ███       ", claws_style)]),
-			Line::from(vec![Span::styled("      ██", claws_light_style), Span::styled("█  ██     ", claws_light_style), Span::styled(format!("v{:<8}", env!("CARGO_PKG_VERSION")), claws_light_style), Span::styled("  ██  ███      ", claws_style)]),
+			Line::from(vec![
+				Span::styled("      ██", claws_light_style),
+				Span::styled("█  ██     ", claws_light_style),
+				Span::styled(format!("v{:<8}", env!("CARGO_PKG_VERSION")), claws_light_style),
+				Span::styled("  ██  ███      ", claws_style),
+			]),
 			Line::from(vec![Span::styled("      ██", claws_light_style), Span::styled("███                    █████      ", claws_style)]),
 			Line::from(vec![
 				Span::styled(" ██", claws_light_style),
@@ -155,7 +160,7 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 
 		let hint_area = Rect { x: input_area.x, y: input_area.y + input_area.height, width: input_area.width, height: 2 };
 
-		let hint = Paragraph::new(vec![Line::from(format!("will create {}", path.display())), Line::from("[Enter] confirm  [Esc] cancel")])
+		let hint = Paragraph::new(vec![Line::from(format!("will create {}", path.display())), Line::from("[Enter] Confirm  [Esc] Cancel")])
 			.alignment(Alignment::Center)
 			.style(Style::new().fg(app.theme.warning));
 
@@ -163,7 +168,7 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 	} else if missing {
 		let hint_area = Rect { x: input_area.x, y: input_area.y + input_area.height, width: input_area.width, height: 1 };
 
-		let hint = Paragraph::new("[n] create a new database  [Esc] quit")
+		let hint = Paragraph::new("[n] Create a new database  [Esc] Quit")
 			.alignment(Alignment::Center)
 			.style(Style::new().fg(app.theme.warning));
 
@@ -171,7 +176,7 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 	} else {
 		let hint_area = Rect { x: input_area.x, y: input_area.y + input_area.height, width: input_area.width, height: 1 };
 
-		let hint = Paragraph::new("Enter the master password  [Esc] quit")
+		let hint = Paragraph::new("Enter the master password  [Esc] Quit")
 			.alignment(Alignment::Center)
 			.style(Style::new().fg(app.theme.warning));
 

@@ -1,11 +1,19 @@
 use std::time::Instant;
 
 use crossterm::event::KeyCode;
+use zeroize::Zeroize;
 
 use crate::app::{App, Screen};
 use crate::config::save_config;
-use crate::db::{calculate_warnings, create_database, unlock_database};
+use crate::db::{create_database, unlock_database};
 use crate::util::default_new_database_path;
+
+fn secret_pop(secret: &mut String) {
+	if let Some((index, _)) = secret.char_indices().next_back() {
+		secret[index..].zeroize();
+		secret.truncate(index);
+	}
+}
 
 pub fn handle_login_input(app: &mut App, key: KeyCode) {
 	if app.creating_database {
@@ -29,7 +37,7 @@ pub fn handle_login_input(app: &mut App, key: KeyCode) {
 
 		KeyCode::Backspace => {
 			app.login_error = None;
-			app.password.pop();
+			secret_pop(&mut app.password);
 		}
 
 		KeyCode::Enter => {
@@ -53,7 +61,7 @@ pub fn database_missing(app: &App) -> bool {
 
 fn handle_missing_database_input(app: &mut App, key: KeyCode) {
 	match crate::input::normalize_shortcut(key) {
-		KeyCode::Char('n') => start_create_database(app),
+		KeyCode::Char('c') => start_create_database(app),
 
 		KeyCode::Esc => {
 			app.should_quit = true;
@@ -66,16 +74,16 @@ fn handle_missing_database_input(app: &mut App, key: KeyCode) {
 fn start_create_database(app: &mut App) {
 	app.creating_database = true;
 	app.confirming_new_db_password = false;
-	app.password.clear();
-	app.new_db_confirm.clear();
+	app.password.zeroize();
+	app.new_db_confirm.zeroize();
 	app.login_error = None;
 }
 
 fn cancel_create_database(app: &mut App) {
 	app.creating_database = false;
 	app.confirming_new_db_password = false;
-	app.password.clear();
-	app.new_db_confirm.clear();
+	app.password.zeroize();
+	app.new_db_confirm.zeroize();
 	app.login_error = None;
 }
 
@@ -98,9 +106,9 @@ fn handle_create_database_input(app: &mut App, key: KeyCode) {
 			app.login_error = None;
 
 			if app.confirming_new_db_password {
-				app.new_db_confirm.pop();
+				secret_pop(&mut app.new_db_confirm);
 			} else {
-				app.password.pop();
+				secret_pop(&mut app.password);
 			}
 		}
 
@@ -123,7 +131,7 @@ fn handle_create_database_input(app: &mut App, key: KeyCode) {
 fn finish_create_database(app: &mut App) {
 	if app.new_db_confirm != app.password {
 		app.login_error = Some("Passwords don't match".to_string());
-		app.new_db_confirm.clear();
+		app.new_db_confirm.zeroize();
 		app.confirming_new_db_password = false;
 		return;
 	}
@@ -134,7 +142,7 @@ fn finish_create_database(app: &mut App) {
 		app.config.default_database = Some(path.clone());
 		let _ = save_config(&app.config);
 
-		app.new_db_confirm.clear();
+		app.new_db_confirm.zeroize();
 		app.creating_database = false;
 		app.confirming_new_db_password = false;
 		app.login_error = Some(format!("A vault already exists at {}. Press Enter to try unlocking it with this password.", path.display()));
@@ -149,8 +157,8 @@ fn finish_create_database(app: &mut App) {
 			app.kdbx = Some(db);
 			app.db_key = Some(key);
 			app.entries = entries;
-			app.password.clear();
-			app.new_db_confirm.clear();
+			app.password.zeroize();
+			app.new_db_confirm.zeroize();
 			app.creating_database = false;
 			app.confirming_new_db_password = false;
 			app.login_error = None;
@@ -166,8 +174,8 @@ fn finish_create_database(app: &mut App) {
 
 		Err(err) => {
 			app.login_error = Some(format!("Couldn't create database: {err:#}"));
-			app.password.clear();
-			app.new_db_confirm.clear();
+			app.password.zeroize();
+			app.new_db_confirm.zeroize();
 			app.confirming_new_db_password = false;
 		}
 	}
@@ -180,19 +188,18 @@ fn attempt_unlock(app: &mut App) {
 	};
 
 	match unlock_database(&path, &app.password, app.config.keyfile.as_deref()) {
-		Ok((db, key, mut entries)) => {
-			calculate_warnings(&mut entries);
+		Ok((db, key, entries)) => {
 			app.entries = entries;
 			app.kdbx = Some(db);
 			app.db_key = Some(key);
-			app.password.clear();
+			app.password.zeroize();
 			app.login_error = None;
 			app.last_activity = Instant::now();
 			app.refresh_filter();
 			app.screen = Screen::Index;
 		}
 		Err(err) => {
-			app.password.clear();
+			app.password.zeroize();
 			app.login_error = Some(format!("{err}"));
 		}
 	}

@@ -57,8 +57,9 @@ pub struct App {
 	pub query: Zeroizing<String>,
 	pub max_len: usize,
 	pub index_state: TableState,
+	pub index_page_size: usize,
+	pub confirm_index_delete: Option<usize>,
 	pub edit_state: ListState,
-	pub reveal_password: bool,
 	pub edit_entry: Option<Entry>,
 	pub edit_original: Option<Entry>,
 	pub edit_target: Option<usize>,
@@ -125,11 +126,7 @@ impl App {
 		indices.sort_by(|&a, &b| {
 			let ea = &self.entries[a];
 			let eb = &self.entries[b];
-
-			eb.password_reuse_count
-				.cmp(&ea.password_reuse_count)
-				.then_with(|| eb.duplicate_user_count.cmp(&ea.duplicate_user_count))
-				.then_with(|| ea.name.to_lowercase().cmp(&eb.name.to_lowercase()))
+			ea.name.to_lowercase().cmp(&eb.name.to_lowercase())
 		});
 
 		indices
@@ -166,7 +163,6 @@ fn maybe_auto_lock(app: &mut App) {
 	app.field_editor_scroll = 0;
 	app.confirm_delete = false;
 	app.confirm_exit = false;
-	app.reveal_password = false;
 	app.available_themes.clear();
 	app.settings_state.select(None);
 	app.choosing_theme = false;
@@ -235,8 +231,9 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 		login_error: None,
 		last_activity: Instant::now(),
 		index_state: TableState::default().with_selected(Some(0)),
+		index_page_size: 1,
+		confirm_index_delete: None,
 		edit_state: ListState::default(),
-		reveal_password: false,
 		edit_entry: None,
 		edit_original: None,
 		edit_target: None,

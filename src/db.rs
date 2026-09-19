@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
@@ -75,8 +74,6 @@ pub struct Entry {
 	pub totp: String,
 	pub notes: String,
 	pub date_last_modify: String,
-	pub password_reuse_count: u32,
-	pub duplicate_user_count: u32,
 }
 
 fn format_date_time(dt: chrono::NaiveDateTime) -> String {
@@ -106,8 +103,6 @@ pub fn unlock_database(path: &Path, password: &str, keyfile_path: Option<&Path>)
 				totp: resolve_totp(&e),
 				notes: e.get(fields::NOTES).unwrap_or_default().to_string(),
 				date_last_modify,
-				password_reuse_count: 0,
-				duplicate_user_count: 0,
 			}
 		})
 		.collect();
@@ -189,12 +184,14 @@ fn write_entry(db: &mut Database, entry: &mut Entry) -> anyhow::Result<()> {
 		Some(id) => {
 			let mut e = db.entry_mut(id).context("entry no longer exists in the database")?;
 			apply_fields(&mut e, entry);
+			entry.date_last_modify = e.times.last_modification.map(format_date_time).unwrap_or_default();
 		}
 		None => {
 			let mut root = db.root_mut();
 			let mut e = root.add_entry();
 			apply_fields(&mut e, entry);
 			entry.id = Some(e.id());
+			entry.date_last_modify = e.times.last_modification.map(format_date_time).unwrap_or_default();
 		}
 	}
 
@@ -221,35 +218,6 @@ fn sibling_tmp_path(path: &Path) -> PathBuf {
 	let mut name: OsString = path.as_os_str().to_owned();
 	name.push(".tmp");
 	PathBuf::from(name)
-}
-
-pub fn calculate_warnings(entries: &mut [Entry]) {
-	let mut password_counts: HashMap<String, u32> = HashMap::new();
-	let mut user_counts: HashMap<String, u32> = HashMap::new();
-
-	for entry in entries.iter() {
-		if !entry.password.trim().is_empty() {
-			*password_counts.entry(entry.password.clone()).or_insert(0) += 1;
-		}
-
-		if !entry.user.trim().is_empty() {
-			*user_counts.entry(entry.user.clone()).or_insert(0) += 1;
-		}
-	}
-
-	for entry in entries.iter_mut() {
-		entry.password_reuse_count = if entry.password.trim().is_empty() { 0 } else { password_counts.get(&entry.password).copied().unwrap_or(0) };
-
-		entry.duplicate_user_count = if entry.user.trim().is_empty() { 0 } else { user_counts.get(&entry.user).copied().unwrap_or(0) };
-	}
-
-	for (mut password, _) in password_counts.drain() {
-		password.zeroize();
-	}
-
-	for (mut user, _) in user_counts.drain() {
-		user.zeroize();
-	}
 }
 
 #[cfg(test)]

@@ -106,15 +106,16 @@ impl FieldEditor {
 		match key.code {
 			KeyCode::Esc => EditAction::Cancel,
 
-			KeyCode::Enter => EditAction::Accept,
-
-			KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+			KeyCode::Enter => {
 				if self.is_multiline() {
 					self.insert('\n');
+					EditAction::Continue
+				} else {
+					EditAction::Accept
 				}
-
-				EditAction::Continue
 			}
+
+			KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => EditAction::Accept,
 
 			KeyCode::Char(ch) => {
 				self.insert(ch);
@@ -506,27 +507,37 @@ mod tests {
 	}
 
 	#[test]
-	fn single_line_ctrl_n_is_ignored() {
+	fn ctrl_n_is_ignored() {
 		let mut editor = FieldEditor::with_text("abc");
 
 		let action = editor.handle_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::CONTROL));
 
 		assert_eq!(action, EditAction::Continue);
-		assert_eq!(editor.text(), "abc");
-		assert_eq!(editor.cursor(), 0);
+		assert_eq!(editor.text(), "nabc");
+		assert_eq!(editor.cursor(), 1);
 	}
 
 	#[test]
-	fn multiline_ctrl_n_inserts_newline() {
+	fn multiline_enter_inserts_newline() {
 		let mut editor = FieldEditor::with_multiline_text("abc");
 
 		editor.end();
 
-		let action = editor.handle_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::CONTROL));
+		let action = editor.handle_key(KeyEvent::from(KeyCode::Enter));
 
 		assert_eq!(action, EditAction::Continue);
 		assert_eq!(editor.text(), "abc\n");
 		assert_eq!(editor.cursor(), 4);
+	}
+
+	#[test]
+	fn multiline_ctrl_s_accepts() {
+		let mut editor = FieldEditor::with_multiline_text("abc");
+
+		let action = editor.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
+
+		assert_eq!(action, EditAction::Accept);
+		assert_eq!(editor.text(), "abc");
 	}
 
 	#[test]
@@ -584,5 +595,12 @@ mod tests {
 		assert_eq!(editor.handle_key(KeyEvent::from(KeyCode::Enter)), EditAction::Accept);
 
 		assert_eq!(editor.handle_key(KeyEvent::from(KeyCode::Esc)), EditAction::Cancel);
+	}
+
+	#[test]
+	fn single_line_enter_accepts() {
+		let mut editor = FieldEditor::with_text("");
+
+		assert_eq!(editor.handle_key(KeyEvent::from(KeyCode::Enter)), EditAction::Accept);
 	}
 }

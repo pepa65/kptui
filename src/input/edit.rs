@@ -1,7 +1,8 @@
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::{App, Screen};
-use crate::db::{calculate_warnings, delete_entry, save_database};
+use crate::db::save_database;
+use crate::input::command::preview_entry;
 use crate::input::fieldedit::{EditAction, FieldEditor};
 
 const FIELD_COUNT: usize = 7;
@@ -24,27 +25,73 @@ pub fn handle_edit_input(app: &mut App, key: KeyEvent) {
 		return;
 	}
 
-	if app.confirm_delete {
-		handle_delete_confirmation(app, key.code);
+	match key.code {
+		KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+			save_and_reopen_edit(app);
+		}
+		KeyCode::Esc => {
+			app.status = None;
+			request_close_edit(app);
+		}
+		_ => {
+			app.status = None;
+      match key.code {
+				KeyCode::Enter => start_editing_field(app),
+				KeyCode::Down => move_selection(app, 1),
+				KeyCode::Up => move_selection(app, -1),
+				_ => {}
+			}
+		}
+	}
+}
+
+fn move_selection(app: &mut App, delta: i32) {
+	let current = app.edit_state.selected().unwrap_or(0) as i32;
+	let next = (current + delta).rem_euclid(FIELD_COUNT as i32) as usize;
+	app.edit_state.select(Some(next));
+}
+
+fn start_editing_field(app: &mut App) {
+	let selected = app.edit_state.selected().unwrap_or(0);
+	if selected == LAST_MODIFIED_INDEX {
+		app.status = Some("Last modified is set automatically".to_string());
 		return;
 	}
 
-	match crate::input::normalize_shortcut(key.code) {
-		KeyCode::Esc => request_close_edit(app),
+	let Some(entry) = app.edit_entry.as_ref() else {
+		return;
+	};
 
-		KeyCode::Enter => start_editing_field(app),
-
-		KeyCode::Char('v') => {
-			app.reveal_password = !app.reveal_password;
+	match selected {
+		NAME_INDEX => {
+			app.field_editor = Some(FieldEditor::with_text(&entry.name));
 		}
 
-		KeyCode::Char('d') => start_delete_confirmation(app),
+		USER_INDEX => {
+			app.field_editor = Some(FieldEditor::with_text(&entry.user));
+		}
 
-		KeyCode::Down => move_selection(app, 1),
-		KeyCode::Up => move_selection(app, -1),
+		PASSWORD_INDEX => {
+			app.field_editor = Some(FieldEditor::with_text(&entry.password));
+		}
 
-		_ => {}
+		URL_INDEX => {
+			app.field_editor = Some(FieldEditor::with_text(&entry.url));
+		}
+
+		TOTP_INDEX => {
+			app.field_editor = Some(FieldEditor::with_text(&entry.totp));
+		}
+
+		NOTES_INDEX => {
+			app.field_editor = Some(FieldEditor::with_multiline_text(&entry.notes));
+		}
+
+		_ => return,
 	}
+
+	app.editing_field = true;
+	app.status = None;
 }
 
 fn handle_field_input(app: &mut App, key: KeyEvent) {
@@ -68,57 +115,6 @@ fn handle_field_input(app: &mut App, key: KeyEvent) {
 	}
 }
 
-fn move_selection(app: &mut App, delta: i32) {
-	let current = app.edit_state.selected().unwrap_or(0) as i32;
-	let next = (current + delta).rem_euclid(FIELD_COUNT as i32) as usize;
-	app.edit_state.select(Some(next));
-}
-
-fn start_editing_field(app: &mut App) {
-	let selected = app.edit_state.selected().unwrap_or(0);
-
-	if selected == LAST_MODIFIED_INDEX {
-		app.status = Some("Last modified is set automatically".to_string());
-		return;
-	}
-
-	let Some(entry) = app.edit_entry.as_ref() else {
-		return;
-	};
-
-	match selected {
-		NAME_INDEX => {
-			app.field_editor = Some(FieldEditor::with_text(&entry.name));
-		}
-
-		USER_INDEX => {
-			app.field_editor = Some(FieldEditor::with_text(&entry.user));
-		}
-
-		PASSWORD_INDEX => {
-			app.field_editor = Some(FieldEditor::with_text(&entry.password));
-			app.reveal_password = true;
-		}
-
-		URL_INDEX => {
-			app.field_editor = Some(FieldEditor::with_text(&entry.url));
-		}
-
-		TOTP_INDEX => {
-			app.field_editor = Some(FieldEditor::with_text(&entry.totp));
-		}
-
-		NOTES_INDEX => {
-			app.field_editor = Some(FieldEditor::with_multiline_text(&entry.notes));
-		}
-
-		_ => return,
-	}
-
-	app.editing_field = true;
-	app.status = None;
-}
-
 fn commit_field(app: &mut App) {
 	let selected = app.edit_state.selected().unwrap_or(0);
 
@@ -136,14 +132,13 @@ fn commit_field(app: &mut App) {
 			_ => {}
 		}
 	}
-
 	app.editing_field = false;
 }
 
 fn request_close_edit(app: &mut App) {
 	if has_unsaved_changes(app) {
 		app.confirm_exit = true;
-		app.status = Some("Save changes? [y] yes  [n] no".to_string());
+		app.status = Some("Save changes? [y] Yes  [n] No".to_string());
 	} else {
 		reset_edit_state(app);
 	}
@@ -168,20 +163,32 @@ fn handle_exit_confirmation(app: &mut App, key: KeyCode) {
 			app.confirm_exit = false;
 			close_edit(app);
 		}
-
 		KeyCode::Char('n') => {
 			app.confirm_exit = false;
 			reset_edit_state(app);
 			app.status = Some("Changes discarded".to_string());
 		}
-
 		KeyCode::Esc => {
 			app.confirm_exit = false;
 			app.status = None;
 		}
-
 		_ => {}
 	}
+}
+
+fn save_and_reopen_edit(app: &mut App) {
+	let Some(saved_idx) = save_edit(app) else {
+		reset_edit_state(app);
+		return;
+	};
+
+	reset_edit_state(app);
+	let Some(filtered_pos) = app.filtered.iter().position(|&idx| idx == saved_idx) else {
+		return;
+	};
+
+	app.index_state.select(Some(filtered_pos));
+	preview_entry(app);
 }
 
 fn close_edit(app: &mut App) {
@@ -195,18 +202,13 @@ fn reset_edit_state(app: &mut App) {
 	app.edit_target = None;
 	app.editing_field = false;
 	app.field_editor = None;
-	app.confirm_delete = false;
 	app.confirm_exit = false;
-	app.reveal_password = false;
 	app.edit_state.select(None);
 	app.screen = Screen::Index;
 }
 
-fn save_edit(app: &mut App) {
-	let Some(entry) = app.edit_entry.take() else {
-		return;
-	};
-
+fn save_edit(app: &mut App) -> Option<usize> {
+	let entry = app.edit_entry.take()?;
 	let saved_idx = match app.edit_target {
 		Some(idx) => {
 			if let Some(slot) = app.entries.get_mut(idx) {
@@ -223,78 +225,29 @@ fn save_edit(app: &mut App) {
 			}
 		}
 	};
-
-	calculate_warnings(&mut app.entries);
 	app.refresh_filter();
-
 	if let Some(idx) = saved_idx {
 		persist_entry(app, idx);
 	}
+	saved_idx
 }
 
 fn persist_entry(app: &mut App, idx: usize) {
-	let (Some(db), Some(key), Some(path)) = (app.kdbx.as_mut(), app.db_key.as_ref(), app.config.default_database.as_ref()) else {
-		app.status = Some("Not saved: database is locked".to_string());
-		return;
-	};
+  let (Some(db), Some(key), Some(path)) = (
+    app.kdbx.as_mut(),
+    app.db_key.as_ref(),
+    app.config.default_database.as_ref(),
+  ) else {
+    app.status = Some("Not saved: database is locked".to_string());
+    return;
+  };
 
-	let Some(target) = app.entries.get_mut(idx) else {
-		return;
-	};
+  let Some(target) = app.entries.get_mut(idx) else {
+    return;
+  };
 
-	match save_database(path, key, db, std::slice::from_mut(target)) {
-		Ok(()) => app.status = Some("Saved".to_string()),
-		Err(err) => app.status = Some(format!("Failed to save: {err:#}")),
-	}
-}
-
-fn start_delete_confirmation(app: &mut App) {
-	if app.edit_entry.is_none() {
-		return;
-	}
-
-	app.confirm_delete = true;
-	app.status = Some("Delete this entry? [y] confirm  [any other key] cancel".to_string());
-}
-
-fn handle_delete_confirmation(app: &mut App, key: KeyCode) {
-	app.confirm_delete = false;
-	app.status = None;
-
-	if let KeyCode::Char('y') = crate::input::normalize_shortcut(key) {
-		delete_current_entry(app);
-	}
-}
-
-fn delete_current_entry(app: &mut App) {
-	let Some(entry) = app.edit_entry.take() else {
-		reset_edit_state(app);
-		return;
-	};
-
-	if let Some(id) = entry.id {
-		let (Some(db), Some(key), Some(path)) = (app.kdbx.as_mut(), app.db_key.as_ref(), app.config.default_database.as_ref()) else {
-			app.status = Some("Not deleted: database is locked".to_string());
-			app.edit_entry = Some(entry);
-			return;
-		};
-
-		if let Err(err) = delete_entry(path, key, db, id) {
-			app.status = Some(format!("Failed to delete: {err:#}"));
-			app.edit_entry = Some(entry);
-			return;
-		}
-	}
-
-	if let Some(idx) = app.edit_target
-		&& idx < app.entries.len()
-	{
-		app.entries.remove(idx);
-	}
-
-	calculate_warnings(&mut app.entries);
-	app.refresh_filter();
-
-	reset_edit_state(app);
-	app.status = Some("Entry deleted".to_string());
+  match save_database(path, key, db, std::slice::from_mut(target)) {
+    Ok(()) => app.status = Some("Saved".to_string()),
+    Err(err) => app.status = Some(format!("Failed to save: {err:#}")),
+  }
 }

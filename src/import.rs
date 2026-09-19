@@ -64,8 +64,6 @@ pub fn import_csv(path: &Path) -> anyhow::Result<Vec<Entry>> {
 			totp: get(&record, totp_col),
 			notes: get(&record, notes_col),
 			date_last_modify: String::new(),
-			password_reuse_count: 0,
-			duplicate_user_count: 0,
 		};
 
 		if entry.name.is_empty() && entry.user.is_empty() && entry.password.is_empty() {
@@ -145,8 +143,6 @@ impl From<BitwardenItem> for Entry {
 			totp: login.totp.unwrap_or_default(),
 			notes: item.notes.unwrap_or_default(),
 			date_last_modify: String::new(),
-			password_reuse_count: 0,
-			duplicate_user_count: 0,
 		}
 	}
 }
@@ -178,8 +174,6 @@ impl From<FlatEntry> for Entry {
 			totp: f.totp,
 			notes: f.notes,
 			date_last_modify: String::new(),
-			password_reuse_count: 0,
-			duplicate_user_count: 0,
 		}
 	}
 }

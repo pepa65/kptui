@@ -5,7 +5,7 @@
 [![license](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://github.com/pepa65/kptui/blob/main/LICENSE)
 [![downloads](https://img.shields.io/crates/d/kptui.svg)](https://crates.io/crates/kptui)
 
-# kptui 0.16.0
+# kptui 0.17.0
 **TUI password manager for [KeePass](https://keepass.info/) vaults**
 
 * Compatible with the `.kdbx` (4) file format.
@@ -28,7 +28,7 @@
 ## Installing
 ### Download static single-binary
 ```
-wget https://github.com/pepa65/kptui/releases/download/0.16.0/kptui
+wget https://github.com/pepa65/kptui/releases/download/0.17.0/kptui
 sudo mv kptui /usr/local/bin
 sudo chown root:root /usr/local/bin/kptui
 sudo chmod +x /usr/local/bin/kptui
@@ -72,6 +72,9 @@ It will be installed in `~/.cargo/bin/` which will need to be added to `PATH`!
 default_database = "~/passwords.kdbx"
 keyfile = "~/passwords.keyx"
 ```
+* To run in narrower terminals: `kptui --slim`
+* To show the version: `kptui --version`
+* To show a short help: `kptui --help`
 
 ## Configuration
 Configfile is in `~/.config/kptui/config.toml`:
