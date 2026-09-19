@@ -71,9 +71,9 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 
 		let logo = Paragraph::new(vec![
 			Line::from(vec![Span::styled("         ███", claws_light_style), Span::styled("                  ███         ", claws_style)]),
-			Line::from(vec![Span::styled("        ██", claws_light_style), Span::styled("█                    ███        ", claws_style)]),
+			Line::from(vec![Span::styled("        ██", claws_light_style), Span::styled("█        kptui       ███        ", claws_style)]),
 			Line::from(vec![Span::styled("       ██", claws_light_style), Span::styled("█   █              █   ███       ", claws_style)]),
-			Line::from(vec![Span::styled("      ██", claws_light_style), Span::styled("█  ██                ██  ███      ", claws_style)]),
+			Line::from(vec![Span::styled("      ██", claws_light_style), Span::styled("█  ██     ", claws_light_style), Span::styled(format!("v{:<8}", env!("CARGO_PKG_VERSION")), claws_light_style), Span::styled("  ██  ███      ", claws_style)]),
 			Line::from(vec![Span::styled("      ██", claws_light_style), Span::styled("███                    █████      ", claws_style)]),
 			Line::from(vec![
 				Span::styled(" ██", claws_light_style),
@@ -164,6 +164,14 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 		let hint_area = Rect { x: input_area.x, y: input_area.y + input_area.height, width: input_area.width, height: 1 };
 
 		let hint = Paragraph::new("[n] create a new database  [Esc] quit")
+			.alignment(Alignment::Center)
+			.style(Style::new().fg(app.theme.warning));
+
+		frame.render_widget(hint, hint_area);
+	} else {
+		let hint_area = Rect { x: input_area.x, y: input_area.y + input_area.height, width: input_area.width, height: 1 };
+
+		let hint = Paragraph::new("Enter the master password  [Esc] quit")
 			.alignment(Alignment::Center)
 			.style(Style::new().fg(app.theme.warning));
 

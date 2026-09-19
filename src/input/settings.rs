@@ -2,11 +2,11 @@ use std::path::Path;
 use std::time::Duration;
 
 use crossterm::event::{KeyCode, KeyEvent};
-use ratatui_textarea::TextArea;
 
 use crate::app::{App, ExportStep, ImportStep, PasswordChangeStep, Screen};
 use crate::config::save_config;
 use crate::db::{Entry, build_database_key, calculate_warnings, save_database, unlock_database};
+use crate::input::fieldedit::{EditAction, FieldEditor};
 use crate::theme::load_theme;
 use crate::util::expand_tilde;
 
@@ -22,7 +22,7 @@ pub const EXPORT_ROW: usize = 6;
 
 pub fn handle_settings_input(app: &mut App, key: KeyEvent) {
 	if app.exporting_database {
-		handle_export_input(app, key.code);
+		handle_export_input(app, key);
 		return;
 	}
 
@@ -89,14 +89,10 @@ fn activate_selected(app: &mut App) {
 	}
 }
 
-fn new_settings_textarea(value: &str) -> TextArea<'static> {
-	TextArea::new(vec![value.to_owned()])
-}
-
 fn start_editing_database(app: &mut App) {
 	let value = app.config.default_database.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
 
-	app.field_textarea = Some(new_settings_textarea(&value));
+	app.field_editor = Some(FieldEditor::with_text(value));
 	app.editing_field = true;
 	app.status = None;
 }
@@ -104,31 +100,34 @@ fn start_editing_database(app: &mut App) {
 fn start_editing_keyfile(app: &mut App) {
 	let value = app.config.keyfile.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
 
-	app.field_textarea = Some(new_settings_textarea(&value));
+	app.field_editor = Some(FieldEditor::with_text(value));
 	app.editing_field = true;
 	app.status = None;
 }
 
 fn start_editing_auto_lock(app: &mut App) {
-	app.field_textarea = Some(new_settings_textarea(&app.config.auto_lock.as_secs().to_string()));
+	app.field_editor = Some(FieldEditor::with_text(app.config.auto_lock.as_secs().to_string()));
 	app.editing_field = true;
 	app.status = None;
 }
 
 fn handle_field_input(app: &mut App, key: KeyEvent) {
-	match key.code {
-		KeyCode::Esc => {
-			app.editing_field = false;
-			app.field_textarea = None;
-			app.status = None;
+	let Some(editor) = app.field_editor.as_mut() else {
+		app.editing_field = false;
+		return;
+	};
+
+	match editor.handle_key(key) {
+		EditAction::Continue => {}
+
+		EditAction::Accept => {
+			commit_field(app);
 		}
 
-		KeyCode::Enter => commit_field(app),
-
-		_ => {
-			if let Some(textarea) = app.field_textarea.as_mut() {
-				textarea.input(key);
-			}
+		EditAction::Cancel => {
+			app.editing_field = false;
+			app.field_editor = None;
+			app.status = None;
 		}
 	}
 }
@@ -136,10 +135,9 @@ fn handle_field_input(app: &mut App, key: KeyEvent) {
 fn commit_field(app: &mut App) {
 	let selected = app.settings_state.selected().unwrap_or(0);
 
-	let value = app.field_textarea.take().map(|textarea| textarea.into_lines().join("\n")).unwrap_or_default();
+	let value = app.field_editor.take().map(FieldEditor::into_text).unwrap_or_default();
 
 	app.editing_field = false;
-	app.field_textarea = None;
 
 	match selected {
 		DATABASE_ROW => {
@@ -452,8 +450,8 @@ fn cancel_export(app: &mut App) {
 	app.status = None;
 }
 
-fn handle_export_input(app: &mut App, key: KeyCode) {
-	match key {
+fn handle_export_input(app: &mut App, key: KeyEvent) {
+	match key.code {
 		KeyCode::Char(c) => {
 			app.status = None;
 

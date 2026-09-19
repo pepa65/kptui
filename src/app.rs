@@ -10,7 +10,6 @@ use ratatui::{
 	style::Style,
 	widgets::{Block, ListState, TableState},
 };
-use ratatui_textarea::TextArea;
 use zeroize::Zeroizing;
 
 use crate::config::{Config, load_config};
@@ -55,7 +54,7 @@ pub enum ExportStep {
 pub struct App {
 	pub screen: Screen,
 	pub password: Zeroizing<String>,
-	pub query: String,
+	pub query: Zeroizing<String>,
 	pub max_len: usize,
 	pub index_state: TableState,
 	pub edit_state: ListState,
@@ -64,7 +63,6 @@ pub struct App {
 	pub edit_original: Option<Entry>,
 	pub edit_target: Option<usize>,
 	pub editing_field: bool,
-	pub field_textarea: Option<TextArea<'static>>,
 	pub field_editor: Option<FieldEditor>,
 	pub field_editor_scroll: usize,
 	pub confirm_delete: bool,
@@ -114,13 +112,13 @@ pub struct App {
 
 impl App {
 	fn compute_filtered(&self) -> Vec<usize> {
-		let query = self.query.to_lowercase();
+		let query = Zeroizing::new(self.query.to_lowercase());
 
 		let mut indices: Vec<usize> = self
 			.entries
 			.iter()
 			.enumerate()
-			.filter(|(_, entry)| query.is_empty() || entry.name.to_lowercase().contains(&query) || entry.user.to_lowercase().contains(&query))
+			.filter(|(_, entry)| query.is_empty() || entry.name.to_lowercase().contains(query.as_str()) || entry.user.to_lowercase().contains(query.as_str()))
 			.map(|(i, _)| i)
 			.collect();
 
@@ -164,7 +162,6 @@ fn maybe_auto_lock(app: &mut App) {
 	app.edit_original = None;
 	app.edit_target = None;
 	app.editing_field = false;
-	app.field_textarea = None;
 	app.field_editor = None;
 	app.field_editor_scroll = 0;
 	app.confirm_delete = false;
@@ -213,7 +210,7 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 	let mut app = App {
 		screen: Screen::Login,
 		password: Zeroizing::new(String::new()),
-		query: String::new(),
+		query: Zeroizing::new(String::new()),
 		max_len: 0,
 		theme,
 		config,
@@ -244,7 +241,6 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 		edit_original: None,
 		edit_target: None,
 		editing_field: false,
-		field_textarea: None,
 		field_editor: None,
 		field_editor_scroll: 0,
 		confirm_delete: false,

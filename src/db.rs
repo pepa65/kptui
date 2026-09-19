@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use keepass::db::{EntryId, EntryMut, EntryRef, Times, fields};
 use keepass::{Database, DatabaseKey};
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 fn resolve_totp(e: &EntryRef) -> String {
 	if let Some(otp) = e.get_raw_otp_value()
@@ -38,7 +38,7 @@ fn resolve_totp(e: &EntryRef) -> String {
 }
 
 pub struct TotpCode {
-	pub code: String,
+	pub code: Zeroizing<String>,
 	pub valid_for: std::time::Duration,
 }
 
@@ -50,7 +50,7 @@ pub fn current_totp_code(raw: &str) -> Option<TotpCode> {
 	let totp: keepass::db::TOTP = raw.parse().ok()?;
 	let otp_code = totp.value_now().ok()?;
 
-	Some(TotpCode { code: otp_code.code, valid_for: otp_code.valid_for })
+	Some(TotpCode { code: Zeroizing::new(otp_code.code), valid_for: otp_code.valid_for })
 }
 
 fn urlencoding_encode(input: &str) -> String {
@@ -241,6 +241,14 @@ pub fn calculate_warnings(entries: &mut [Entry]) {
 		entry.password_reuse_count = if entry.password.trim().is_empty() { 0 } else { password_counts.get(&entry.password).copied().unwrap_or(0) };
 
 		entry.duplicate_user_count = if entry.user.trim().is_empty() { 0 } else { user_counts.get(&entry.user).copied().unwrap_or(0) };
+	}
+
+	for (mut password, _) in password_counts.drain() {
+		password.zeroize();
+	}
+
+	for (mut user, _) in user_counts.drain() {
+		user.zeroize();
 	}
 }
 

@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use crate::app::App;
-use crate::input::settings::{AUTO_LOCK_ROW, DATABASE_ROW, KEYFILE_ROW};
+use crate::input::settings::{AUTO_LOCK_ROW, DATABASE_ROW, KEYFILE_ROW, THEME_ROW};
 use crate::util::wrap_help_items;
 
 fn centered_cursor_x(input_area: Rect, typed_len: u16) -> u16 {
@@ -60,6 +60,7 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 	let selected = app.settings_state.selected().unwrap_or(0);
 
 	let help_items = if editing_field { field_help_items(app.slim_mode) } else { nav_help_items(app.slim_mode) };
+
 	let help_width = full_area.width.saturating_sub(2);
 	let help_lines = wrap_help_items(help_items, help_width);
 	let help_height = help_lines.len() as u16;
@@ -78,22 +79,22 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 	let editing_style = Style::new().fg(theme.selection_fg).bg(theme.selection_bg);
 	let label_style = Style::new().fg(theme.header).bold();
 
-	let render_value = |_field_index: usize, value: String| -> Line<'static> {
-		if value.is_empty() {
-			return Line::from(Span::styled("(not set)", placeholder));
-		}
+	let field = |field_index: usize, label: &'static str, value: String| -> ListItem<'static> {
+		let current_label_style = if selected == field_index { editing_style } else { label_style };
 
-		Line::from(Span::styled(value, normal))
-	};
+		let value_line = if value.is_empty() {
+			Line::from(Span::styled("(not set)", placeholder))
+		} else {
+			Line::from(Span::styled(value, normal))
+		};
 
-	let field = |field_index: usize, label: &'static str, value: Line<'static>| -> ListItem<'static> {
-		let label_style = if selected == field_index { editing_style } else { label_style };
-
-		ListItem::new(vec![Line::from(Span::styled(label, label_style)), value, Line::from("")])
+		ListItem::new(vec![Line::from(Span::styled(label, current_label_style)), value_line, Line::from("")])
 	};
 
 	let database_value = app.config.default_database.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
+
 	let keyfile_value = app.config.keyfile.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
+
 	let auto_lock_value = app.config.auto_lock.as_secs().to_string();
 
 	let theme_value = if app.available_themes.is_empty() {
@@ -106,41 +107,69 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 	};
 
 	let items = vec![
-		field(DATABASE_ROW, "Default database", render_value(DATABASE_ROW, database_value)),
-		field(KEYFILE_ROW, "Keyfile (optional)", render_value(KEYFILE_ROW, keyfile_value)),
-		field(AUTO_LOCK_ROW, "Auto-lock (seconds)", render_value(AUTO_LOCK_ROW, auto_lock_value)),
-		field(3, "Theme", theme_value),
-		field(4, "Change master password", Line::from(Span::styled("[Enter] to change", placeholder))),
-		field(5, "Import database", Line::from(Span::styled("[Enter] to import", placeholder))),
-		field(6, "Export database", Line::from(Span::styled("[Enter] to export", placeholder))),
+		field(DATABASE_ROW, "Default database", database_value),
+		field(KEYFILE_ROW, "Keyfile (optional)", keyfile_value),
+		field(AUTO_LOCK_ROW, "Auto-lock (seconds)", auto_lock_value),
+		ListItem::new(vec![
+			Line::from(Span::styled("Theme", if selected == THEME_ROW { editing_style } else { label_style })),
+			theme_value,
+			Line::from(""),
+		]),
+		ListItem::new(vec![
+			Line::from(Span::styled("Change master password", if selected == 4 { editing_style } else { label_style })),
+			Line::from(Span::styled("[Enter] to change", placeholder)),
+			Line::from(""),
+		]),
+		ListItem::new(vec![
+			Line::from(Span::styled("Import database", if selected == 5 { editing_style } else { label_style })),
+			Line::from(Span::styled("[Enter] to import", placeholder)),
+			Line::from(""),
+		]),
+		ListItem::new(vec![
+			Line::from(Span::styled("Export database", if selected == 6 { editing_style } else { label_style })),
+			Line::from(Span::styled("[Enter] to export", placeholder)),
+			Line::from(""),
+		]),
 	];
-
-	/*let items = vec![
-		field("Default database", render_value(DATABASE_ROW, database_value)),
-		field("Keyfile (optional)", render_value(KEYFILE_ROW, keyfile_value)),
-		field("Auto-lock (seconds)", render_value(AUTO_LOCK_ROW, auto_lock_value)),
-		field("Theme", theme_value),
-		field("Change master password", Line::from(Span::styled("[Enter] to change", placeholder))),
-		field("Import database", Line::from(Span::styled("[Enter] to import", placeholder))),
-		field("Export database", Line::from(Span::styled("[Enter] to export", placeholder))),
-	];*/
 
 	let list = List::new(items).block(Block::default().borders(Borders::ALL).padding(Padding::horizontal(1)).border_style(border_style).title(" Settings "));
 
 	frame.render_stateful_widget(list, vertical[0], &mut app.settings_state);
+
+	// Overlay the FieldEditor on the selected editable setting.
 	if editing_field
 		&& selected < 3
-		&& let Some(textarea) = app.field_textarea.as_ref()
+		&& let Some(editor) = app.field_editor.as_ref()
 	{
 		let list_area = vertical[0];
-		let textarea_area = Rect { x: list_area.x + 2, y: list_area.y + 2 + (selected as u16 * 3), width: list_area.width.saturating_sub(4), height: 1 };
-		frame.render_widget(textarea, textarea_area);
+
+		// The List has a one-cell border and one-cell horizontal padding.
+		// Each setting occupies three rows:
+		//   label
+		//   value/editor
+		//   blank
+		let value_y = list_area.y + 2 + selected as u16 * 3;
+
+		let editor_x = list_area.x + 2;
+		let editor_width = list_area.width.saturating_sub(3);
+
+		if editor_width > 0 {
+			let (visible, cursor_column) = editor.single_line_view(editor_width as usize);
+
+			let field_area = Rect { x: editor_x, y: value_y, width: editor_width, height: 1 };
+
+			frame.render_widget(Paragraph::new(visible).style(normal), field_area);
+
+			let cursor_x = field_area.x + cursor_column as u16;
+			frame.set_cursor_position((cursor_x, field_area.y));
+		}
 	}
 
 	let help = if let Some(status) = &app.status {
 		Paragraph::new(format!("  {status}")).style(warning)
 	} else {
 		let help_text = help_lines.iter().map(|line| format!("  {line}")).collect::<Vec<_>>().join("\n");
+
 		Paragraph::new(help_text).style(accent)
 	};
 

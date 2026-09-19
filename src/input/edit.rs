@@ -1,5 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui_textarea::{TextArea, WrapMode};
+use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::app::{App, Screen};
 use crate::db::{calculate_warnings, delete_entry, save_database};
@@ -49,34 +48,24 @@ pub fn handle_edit_input(app: &mut App, key: KeyEvent) {
 }
 
 fn handle_field_input(app: &mut App, key: KeyEvent) {
-	match key.code {
-		KeyCode::Esc => {
+	let action = match app.field_editor.as_mut() {
+		Some(editor) => editor.handle_key(key),
+		None => {
+			app.editing_field = false;
+			return;
+		}
+	};
+
+	match action {
+		EditAction::Continue => {}
+
+		EditAction::Accept => commit_field(app),
+
+		EditAction::Cancel => {
 			app.editing_field = false;
 			app.field_editor = None;
 		}
-
-		KeyCode::Enter => {
-			commit_field(app);
-		}
-
-		KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-			if let Some(editor) = app.field_editor.as_mut() {
-				editor.insert_newline();
-			}
-		}
-
-		_ => {
-			handle_editor_input(app, key);
-		}
 	}
-}
-
-fn new_field_textarea(field: &str, wrap: bool) -> TextArea<'static> {
-	let mut textarea = TextArea::new(field.split('\n').map(str::to_owned).collect());
-	if wrap {
-		textarea.set_wrap_mode(WrapMode::WordOrGlyph);
-	}
-	textarea
 }
 
 fn move_selection(app: &mut App, delta: i32) {
@@ -99,28 +88,28 @@ fn start_editing_field(app: &mut App) {
 
 	match selected {
 		NAME_INDEX => {
-			app.field_editor = Some(FieldEditor::with_text(&entry.name, false));
+			app.field_editor = Some(FieldEditor::with_text(&entry.name));
 		}
 
 		USER_INDEX => {
-			app.field_editor = Some(FieldEditor::with_text(&entry.user, false));
+			app.field_editor = Some(FieldEditor::with_text(&entry.user));
 		}
 
 		PASSWORD_INDEX => {
-			app.field_editor = Some(FieldEditor::with_text(&entry.password, false));
+			app.field_editor = Some(FieldEditor::with_text(&entry.password));
 			app.reveal_password = true;
 		}
 
 		URL_INDEX => {
-			app.field_editor = Some(FieldEditor::with_text(&entry.url, false));
+			app.field_editor = Some(FieldEditor::with_text(&entry.url));
 		}
 
 		TOTP_INDEX => {
-			app.field_editor = Some(FieldEditor::with_text(&entry.totp, false));
+			app.field_editor = Some(FieldEditor::with_text(&entry.totp));
 		}
 
 		NOTES_INDEX => {
-			app.field_editor = Some(FieldEditor::with_text(&entry.notes));
+			app.field_editor = Some(FieldEditor::with_multiline_text(&entry.notes));
 		}
 
 		_ => return,
@@ -133,11 +122,7 @@ fn start_editing_field(app: &mut App) {
 fn commit_field(app: &mut App) {
 	let selected = app.edit_state.selected().unwrap_or(0);
 
-	let value = app
-		.field_editor
-		.take()
-		.map(|editor| editor.into_text())
-		.unwrap_or_default();
+	let value = app.field_editor.take().map(|editor| editor.into_text()).unwrap_or_default();
 
 	if let Some(entry) = app.edit_entry.as_mut() {
 		match selected {
