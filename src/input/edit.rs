@@ -29,14 +29,17 @@ pub fn handle_edit_input(app: &mut App, key: KeyEvent) {
 		KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
 			save_and_reopen_edit(app);
 		}
-		KeyCode::Esc => {
-			app.status = None;
-			request_close_edit(app);
-		}
 		_ => {
 			app.status = None;
-      match key.code {
+			match key.code {
+				KeyCode::Esc => request_close_edit(app),
 				KeyCode::Enter => start_editing_field(app),
+				KeyCode::PageUp => {
+					app.field_editor_scroll = app.field_editor_scroll.saturating_sub(1);
+				}
+				KeyCode::PageDown => {
+					app.field_editor_scroll = app.field_editor_scroll.saturating_add(1);
+				}
 				KeyCode::Down => move_selection(app, 1),
 				KeyCode::Up => move_selection(app, -1),
 				_ => {}
@@ -202,6 +205,7 @@ fn reset_edit_state(app: &mut App) {
 	app.edit_target = None;
 	app.editing_field = false;
 	app.field_editor = None;
+	app.field_editor_scroll = 0;
 	app.confirm_exit = false;
 	app.edit_state.select(None);
 	app.screen = Screen::Index;
@@ -233,21 +237,17 @@ fn save_edit(app: &mut App) -> Option<usize> {
 }
 
 fn persist_entry(app: &mut App, idx: usize) {
-  let (Some(db), Some(key), Some(path)) = (
-    app.kdbx.as_mut(),
-    app.db_key.as_ref(),
-    app.config.default_database.as_ref(),
-  ) else {
-    app.status = Some("Not saved: database is locked".to_string());
-    return;
-  };
+	let (Some(db), Some(key), Some(path)) = (app.kdbx.as_mut(), app.db_key.as_ref(), app.config.default_database.as_ref()) else {
+		app.status = Some("Not saved: database is locked".to_string());
+		return;
+	};
 
-  let Some(target) = app.entries.get_mut(idx) else {
-    return;
-  };
+	let Some(target) = app.entries.get_mut(idx) else {
+		return;
+	};
 
-  match save_database(path, key, db, std::slice::from_mut(target)) {
-    Ok(()) => app.status = Some("Saved".to_string()),
-    Err(err) => app.status = Some(format!("Failed to save: {err:#}")),
-  }
+	match save_database(path, key, db, std::slice::from_mut(target)) {
+		Ok(()) => app.status = Some("Saved".to_string()),
+		Err(err) => app.status = Some(format!("Failed to save: {err:#}")),
+	}
 }

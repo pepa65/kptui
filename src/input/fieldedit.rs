@@ -72,6 +72,10 @@ impl FieldEditor {
 		Self { text, cursor: 0, preferred_column: None, mode }
 	}
 
+	pub fn cursor_display_column(&self) -> usize {
+		UnicodeWidthStr::width(&self.text[..self.cursor])
+	}
+
 	pub fn text(&self) -> &str {
 		&self.text
 	}
@@ -105,7 +109,6 @@ impl FieldEditor {
 	pub fn handle_key(&mut self, key: KeyEvent) -> EditAction {
 		match key.code {
 			KeyCode::Esc => EditAction::Cancel,
-
 			KeyCode::Enter => {
 				if self.is_multiline() {
 					self.insert('\n');
@@ -114,54 +117,59 @@ impl FieldEditor {
 					EditAction::Accept
 				}
 			}
-
 			KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => EditAction::Accept,
-
 			KeyCode::Char(ch) => {
 				self.insert(ch);
 				EditAction::Continue
 			}
-
 			KeyCode::Backspace => {
 				self.backspace();
 				EditAction::Continue
 			}
-
 			KeyCode::Delete => {
 				self.delete();
 				EditAction::Continue
 			}
-
 			KeyCode::Left => {
 				self.move_left();
 				EditAction::Continue
 			}
-
 			KeyCode::Right => {
 				self.move_right();
 				EditAction::Continue
 			}
-
 			KeyCode::Up => {
 				self.move_up();
 				EditAction::Continue
 			}
-
 			KeyCode::Down => {
 				self.move_down();
 				EditAction::Continue
 			}
-
+			KeyCode::PageUp => {
+				for _ in 0..5 {
+					if !self.move_up() {
+						break;
+					}
+				}
+				EditAction::Continue
+			}
+			KeyCode::PageDown => {
+				for _ in 0..5 {
+					if !self.move_down() {
+						break;
+					}
+				}
+				EditAction::Continue
+			}
 			KeyCode::Home => {
 				self.home();
 				EditAction::Continue
 			}
-
 			KeyCode::End => {
 				self.end();
 				EditAction::Continue
 			}
-
 			_ => EditAction::Continue,
 		}
 	}
@@ -301,20 +309,10 @@ impl FieldEditor {
 		(visible, cursor_column.min(width))
 	}
 
-	/// Returns the display-column position of the cursor.
-	///
-	/// This uses Unicode terminal width rather than character count, so
-	/// wide characters such as Chinese characters occupy two columns.
-	pub fn cursor_display_column(&self) -> usize {
-		UnicodeWidthStr::width(&self.text[..self.cursor])
-	}
-
 	fn move_vertical(&mut self, direction: i32) -> bool {
 		let current_start = line_start(&self.text, self.cursor);
 		let current_end = line_end(&self.text, self.cursor);
-
 		let current_column = self.preferred_column.unwrap_or_else(|| self.text[current_start..self.cursor].chars().count());
-
 		let target_start = if direction < 0 {
 			if current_start == 0 {
 				return false;
@@ -328,15 +326,11 @@ impl FieldEditor {
 
 			current_end + 1
 		};
-
 		let target_end = line_end(&self.text, target_start);
 		let target_line = &self.text[target_start..target_end];
-
 		let target_column = target_line.chars().take(current_column).map(char::len_utf8).sum::<usize>();
-
 		self.cursor = target_start + target_column;
 		self.preferred_column = Some(current_column);
-
 		true
 	}
 }
@@ -344,41 +338,34 @@ impl FieldEditor {
 fn previous_char_boundary(text: &str, cursor: usize) -> usize {
 	debug_assert!(cursor <= text.len());
 	debug_assert!(text.is_char_boundary(cursor));
-
 	if cursor == 0 {
 		return 0;
 	}
 
 	let mut index = cursor - 1;
-
 	while index > 0 && !text.is_char_boundary(index) {
 		index -= 1;
 	}
-
 	index
 }
 
 fn next_char_boundary(text: &str, cursor: usize) -> usize {
 	debug_assert!(cursor <= text.len());
 	debug_assert!(text.is_char_boundary(cursor));
-
 	if cursor == text.len() {
 		return cursor;
 	}
 
 	let mut index = cursor + 1;
-
 	while index < text.len() && !text.is_char_boundary(index) {
 		index += 1;
 	}
-
 	index
 }
 
 fn line_start(text: &str, cursor: usize) -> usize {
 	debug_assert!(cursor <= text.len());
 	debug_assert!(text.is_char_boundary(cursor));
-
 	match text[..cursor].rfind('\n') {
 		Some(index) => index + 1,
 		None => 0,
@@ -388,7 +375,6 @@ fn line_start(text: &str, cursor: usize) -> usize {
 fn line_end(text: &str, cursor: usize) -> usize {
 	debug_assert!(cursor <= text.len());
 	debug_assert!(text.is_char_boundary(cursor));
-
 	match text[cursor..].find('\n') {
 		Some(index) => cursor + index,
 		None => text.len(),

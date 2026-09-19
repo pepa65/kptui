@@ -9,8 +9,7 @@ mod ui;
 mod util;
 
 use std::io;
-use std::io::{stdout, Write};
-
+use std::io::{Write, stdout};
 
 fn main() -> io::Result<()> {
 	let slim_mode = handle_cli_flags();

@@ -23,9 +23,9 @@ const NOTES_INDEX: usize = 6;
 
 fn nav_help_items(slim_mode: bool) -> &'static [&'static str] {
 	if slim_mode {
-		&["[↑↓]", "[Enter]", "[^s]", "[Esc]"]
+		&["[↑↓]", "[PgUPDn]", "[Enter]", "[^s]", "[Esc]"]
 	} else {
-		&["[↑↓] Navigate", "[Enter] Edit field", "[^s] Save entry", "[Esc] Close"]
+		&["[↑↓] Navigate", "[PgUPDn] Scroll notes", "[Enter] Edit field", "[^s] Save", "[Esc] Close"]
 	}
 }
 
@@ -91,6 +91,8 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) {
 	} else {
 		notes.wrap(notes_width).into_iter().map(|line| Line::from(Span::styled(line.as_str().to_owned(), normal))).collect()
 	};
+	let max_notes_scroll = notes_lines.len().saturating_sub(notes_area.height as usize);
+	app.field_editor_scroll = app.field_editor_scroll.min(max_notes_scroll);
 	let compact_field = |field_index: usize, label: &'static str, value: String, extra: Vec<Span<'static>>, show_empty: bool| -> ListItem<'static> {
 		let label_style = if selected == field_index { editing_style } else { label_style };
 		let mut line = vec![Span::styled(label, label_style), Span::styled(": ", normal)];
@@ -203,33 +205,43 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) {
 	if editing_field && selected == NOTES_INDEX {
 		if let Some(editor) = app.field_editor.as_ref() {
 			frame.render_widget(Clear, notes_area);
+
 			let wrapped = wrap_text(editor.text(), notes_width);
 			let before_cursor = &editor.text()[..editor.cursor()];
 			let cursor_lines = wrap_text(before_cursor, notes_width);
 			let cursor_row = cursor_lines.len().saturating_sub(1);
 			let cursor_col = cursor_lines.last().map(|line| UnicodeWidthStr::width(line.as_str())).unwrap_or(0);
+
 			let visible_height = notes_area.height as usize;
+
 			if cursor_row < app.field_editor_scroll {
 				app.field_editor_scroll = cursor_row;
 			} else if cursor_row >= app.field_editor_scroll + visible_height {
 				app.field_editor_scroll = cursor_row - visible_height + 1;
 			}
+
 			let visible_lines = wrapped
 				.iter()
 				.skip(app.field_editor_scroll)
 				.take(visible_height)
 				.map(|line| Line::from(Span::styled(line.as_str(), normal)))
 				.collect::<Vec<_>>();
+
 			frame.render_widget(Paragraph::new(visible_lines), notes_area);
+
 			let x = notes_area.x + cursor_col as u16;
 			let y = notes_area.y + cursor_row.saturating_sub(app.field_editor_scroll) as u16;
+
 			if let Some(cell) = frame.buffer_mut().cell_mut((x, y)) {
 				cell.set_style(accent_style);
 			}
 		}
 	} else {
-		frame.render_widget(Paragraph::new(notes_lines), notes_area);
+		let visible_lines = notes_lines.into_iter().skip(app.field_editor_scroll).take(notes_area.height as usize).collect::<Vec<_>>();
+
+		frame.render_widget(Paragraph::new(visible_lines), notes_area);
 	}
+
 	let help = if let Some(status) = &app.status {
 		Paragraph::new(format!("  {status}")).style(Style::new().fg(app.theme.warning))
 	} else {
