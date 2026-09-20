@@ -23,9 +23,9 @@ const NOTES_INDEX: usize = 6;
 
 fn nav_help_items(slim_mode: bool) -> &'static [&'static str] {
 	if slim_mode {
-		&["[↑↓]", "[PgUPDn]", "[Enter]", "[^s]", "[Esc]"]
+		&["[↑↓]", "[PgUpDn]", "[Enter]", "[^s]", "[Esc]"]
 	} else {
-		&["[↑↓] Navigate", "[PgUPDn] Scroll notes", "[Enter] Edit field", "[^s] Save", "[Esc] Close"]
+		&["[↑↓] Navigate", "[PgUpDn] Scroll notes", "[Enter] Edit field", "[^s] Save", "[Esc] Close"]
 	}
 }
 

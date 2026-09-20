@@ -13,9 +13,9 @@ use crate::util::wrap_help_items;
 
 fn help_items(slim_mode: bool) -> &'static [&'static str] {
 	if slim_mode {
-		&["[↑↓]", "[^a]", "[^s]", "[Enter]", "[Esc]"]
+		&["[↑↓]", "[^a]", "[^d]", "[^c]", "[Enter]", "[Esc]"]
 	} else {
-		&["[↑↓] Navigate", "[^a] Add entry", "[^c] Configuration", "[Enter] Entry", "[Esc] Quit"]
+		&["[↑↓] Navigate", "[^a] Add entry", "[^d] Delete entry", "[^c] Configuration", "[Enter] Entry", "[Esc] Quit"]
 	}
 }
 

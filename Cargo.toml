@@ -2,7 +2,7 @@
 name = "kptui"
 version = "0.17.0"
 edition = "2024"
-rust-version = "1.97"
+rust-version = "1.89"
 description = "TUI password manager for KeePass vaults"
 authors = ["Pombo <https://github.com/pomboverso>", "<github.com/pepa65>"]
 license = "GPL-3.0-or-later"

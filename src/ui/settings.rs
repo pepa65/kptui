@@ -259,7 +259,7 @@ fn draw_import(frame: &mut Frame, app: &mut App) {
 	let masked = matches!(app.import_step, crate::app::ImportStep::KdbxPassword);
 
 	let title = match app.import_step {
-		crate::app::ImportStep::Path => " Import from file (.kdbx / .csv / .json) ",
+		crate::app::ImportStep::Path => " Import from file (.kdbx/.csv/.json) ",
 		crate::app::ImportStep::KdbxPassword => " Password for that vault ",
 	};
 
@@ -321,7 +321,7 @@ fn draw_export(frame: &mut Frame, app: &mut App) {
 	app.max_len = (input_area.width - 2) as usize;
 
 	let title = match app.export_step {
-		crate::app::ExportStep::Path => " Export to file (.kdbx / .csv / .json) ",
+		crate::app::ExportStep::Path => " Export to file (.kdbx/.csv/.json) ",
 		crate::app::ExportStep::Confirm => " Confirm export ",
 	};
 
@@ -344,10 +344,10 @@ fn draw_export(frame: &mut Frame, app: &mut App) {
 			let overwrite = path.map(|p| p.exists()).unwrap_or(false);
 
 			match (plaintext, overwrite) {
-				(true, true) => "overwriting an existing file with all passwords in PLAINTEXT — press Enter to confirm".to_string(),
-				(true, false) => "writing all passwords in PLAINTEXT to disk — press Enter to confirm".to_string(),
-				(false, true) => "overwriting an existing file — press Enter to confirm".to_string(),
-				(false, false) => "press Enter to confirm".to_string(),
+				(true, true) => "overwriting an existing file with all passwords in PLAINTEXT — [Enter] confirm".to_string(),
+				(true, false) => "writing all passwords in PLAINTEXT to disk — [Enter] Confirm".to_string(),
+				(false, true) => "overwriting an existing file — [Enter] Confirm".to_string(),
+				(false, false) => "[Enter] Confirm".to_string(),
 			}
 		}
 	};
