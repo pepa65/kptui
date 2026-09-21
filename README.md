@@ -12,7 +12,7 @@
 * Fits in with the wider KeePass ecosystem.
 * Fast to open.
 * Keyboard-driven.
-* Stores (only what it needs): `Name`, `Username`, `Password`, `TOTP`, `URL`, `Notes`
+* Stores (only what it needs): `Name`, `Username`, `Password`, `TOTP`, `URL` and `Notes`
 
 ## Features
 - **KDBX4 vaults**: reads and writes standard `.kdbx` files, so you can open the same vault in KeePassXC, KeePassDX, or any other compatible client.
@@ -65,20 +65,28 @@ It will be installed in `~/.cargo/bin/` which will need to be added to `PATH`!
 * On first launch, if no vault is found at the configured path, `kptui` will:
   - Prompt to create a new database.
   - Prompt to set a master password.
+  - But if a password is piped or directed in, this password will be used to
+    create a new database with that password.
 * Once unlocked, entries can be browsed, searched and opened from the index screen.
 * To open an existing vault, set `default_database` in the config file at `~/.config/kptui/config.toml`.
   (A keyfile can also be set with `keyfile`, but the password is still required.)
 ```toml
+# Example
 default_database = "~/passwords.kdbx"
 keyfile = "~/passwords.keyx"
 ```
-* To run in narrower terminals: `kptui --slim`
+* The interface requires a terminal dimensions of at least 44 colums by 23 rows (but 12 rows is still functional).
+* Run in smaller terminals with: `kptui --slim` (at least 39 columns by 5 rows required, but 22 x 11 is still functional).
 * To show the version: `kptui --version`
 * To show a short help: `kptui --help`
+* A password can also be provided non-interactively:
+  - Piped in, like: `echo "$password" |kptui`
+  - Directed in, like: `kptui <<<"$password"`
+  - Use a file with the password: `kptui <password_file`
 
 ## Configuration
-Configfile is in `~/.config/kptui/config.toml`:
-
+The configuration file is expected in a fixed location: `~/.config/kptui/config.toml`.
+See `sample-config.toml` in this repo, or:
 ```toml
 default_database = "~/.local/share/kptui/default.kdbx"
 keyfile = "~/.local/share/kptui/default.keyx"  # Optional (omit for password-only vaults)
@@ -86,7 +94,7 @@ auto_lock = 300  # Seconds of inactivity before locking
 theme = "melange_dark.toml"
 ```
 
-All fields are optional, the above are the defaults.
+All fields are optional, the above are the default values.
 
 ## Security notes
 * Vaults are standard KDBX4 files, encrypted with the master password (and, when configured, the keyfile).
@@ -99,3 +107,4 @@ All fields are optional, the above are the defaults.
 * The app locks after `auto_lock` seconds of inactivity, clearing decrypted entries and the master password from memory.
   All edits and changes will be lost.
 * When the app is open and the vault not locked, secrets are kept in memory!
+* When the app exits, there are no plaintext secrets left anywhere in memory.

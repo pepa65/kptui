@@ -17,7 +17,7 @@ use crate::db::Entry;
 use crate::input::edit::handle_edit_input;
 use crate::input::fieldedit::FieldEditor;
 use crate::input::index::handle_index_input;
-use crate::input::login::handle_login_input;
+use crate::input::login::{attempt_unlock, create_database_with_password, database_missing, handle_login_input};
 use crate::input::settings::handle_settings_input;
 use crate::theme::{Theme, load_theme};
 use crate::ui::edit::draw_edit;
@@ -188,11 +188,9 @@ fn maybe_auto_lock(app: &mut App) {
 	app.login_error = Some("Locked after inactivity".to_string());
 }
 
-pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: bool) -> io::Result<()> {
+pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: bool, password: Zeroizing<String>) -> io::Result<()> {
 	let _ = crate::theme::ensure_default_themes();
-
 	let mut config = load_config().unwrap_or_default();
-
 	if config.default_database.is_none() {
 		let default_path = crate::util::default_new_database_path();
 		if default_path.is_file() {
@@ -200,12 +198,10 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 			let _ = crate::config::save_config(&config);
 		}
 	}
-
 	let theme = load_theme(config.theme.as_deref()).unwrap_or_default();
-
 	let mut app = App {
 		screen: Screen::Login,
-		password: Zeroizing::new(String::new()),
+		password,
 		query: Zeroizing::new(String::new()),
 		max_len: 0,
 		theme,
@@ -253,7 +249,13 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 		should_quit: false,
 		slim_mode,
 	};
-
+	if !app.password.is_empty() {
+		if database_missing(&app) {
+			create_database_with_password(&mut app);
+		} else {
+			attempt_unlock(&mut app);
+		}
+	}
 	const TICK_RATE: Duration = Duration::from_millis(200);
 
 	loop {

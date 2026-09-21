@@ -6,14 +6,7 @@ use zeroize::Zeroize;
 use crate::app::{App, Screen};
 use crate::config::save_config;
 use crate::db::{create_database, unlock_database};
-use crate::util::default_new_database_path;
-
-fn secret_pop(secret: &mut String) {
-	if let Some((index, _)) = secret.char_indices().next_back() {
-		secret[index..].zeroize();
-		secret.truncate(index);
-	}
-}
+use crate::util::{default_new_database_path, secret_pop};
 
 pub fn handle_login_input(app: &mut App, key: KeyCode) {
 	if app.creating_database {
@@ -61,12 +54,16 @@ pub fn database_missing(app: &App) -> bool {
 
 fn handle_missing_database_input(app: &mut App, key: KeyCode) {
 	match crate::input::normalize_shortcut(key) {
-		KeyCode::Char('c') => start_create_database(app),
-
+		KeyCode::Char('c') => {
+			if app.password.is_empty() {
+				start_create_database(app);
+			} else {
+				create_database_with_password(app);
+			}
+		}
 		KeyCode::Esc => {
 			app.should_quit = true;
 		}
-
 		_ => {}
 	}
 }
@@ -136,18 +133,11 @@ fn finish_create_database(app: &mut App) {
 		return;
 	}
 
+	create_database_with_password(app);
+}
+
+pub fn create_database_with_password(app: &mut App) {
 	let path = app.config.default_database.clone().unwrap_or_else(default_new_database_path);
-
-	if path.is_file() {
-		app.config.default_database = Some(path.clone());
-		let _ = save_config(&app.config);
-
-		app.new_db_confirm.zeroize();
-		app.creating_database = false;
-		app.confirming_new_db_password = false;
-		app.login_error = Some(format!("A vault already exists at {}. Press Enter to try unlocking it with this password.", path.display()));
-		return;
-	}
 
 	match create_database(&path, &app.password, app.config.keyfile.as_deref()) {
 		Ok((db, key, entries)) => {
@@ -181,7 +171,7 @@ fn finish_create_database(app: &mut App) {
 	}
 }
 
-fn attempt_unlock(app: &mut App) {
+pub fn attempt_unlock(app: &mut App) {
 	let Some(path) = app.config.default_database.clone() else {
 		app.login_error = Some("No default_database set in configfile".to_string());
 		return;

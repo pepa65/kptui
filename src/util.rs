@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use zeroize::Zeroize;
+
 const VAULT: &str = "~/.local/share/kptui/default.kdbx";
 
 fn strip_surrounding_quotes(path: &str) -> &str {
@@ -55,4 +57,11 @@ pub fn wrap_help_items(items: &[&str], width: u16) -> Vec<String> {
 	}
 
 	lines
+}
+
+pub fn secret_pop(secret: &mut String) {
+	if let Some((index, _)) = secret.char_indices().next_back() {
+		secret[index..].zeroize();
+		secret.truncate(index);
+	}
 }

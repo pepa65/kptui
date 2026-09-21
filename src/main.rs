@@ -8,18 +8,33 @@ mod theme;
 mod ui;
 mod util;
 
-use std::io;
-use std::io::{Write, stdout};
+use std::io::{self, IsTerminal, Write, stdout};
+use zeroize::Zeroizing;
 
-fn main() -> io::Result<()> {
+use crate::util::secret_pop;
+
+fn main() {
 	let slim_mode = handle_cli_flags();
+	let mut password = Zeroizing::new(String::new());
+	if !io::stdin().is_terminal() {
+		io::stdin().read_line(&mut password).unwrap();
+		if password.ends_with('\n') {
+			secret_pop(&mut password);
+			if password.ends_with('\r') {
+				secret_pop(&mut password);
+			}
+		}
+	}
 	let mut terminal = ratatui::init();
-	app::run(&mut terminal, slim_mode)?;
+	let result = app::run(&mut terminal, slim_mode, password);
 	ratatui::restore();
 	let mut out = stdout();
 	out.write_all(b"\x1b[H\x1b[2J\x1b[3J").unwrap();
 	out.flush().unwrap();
-	Ok(())
+	if let Err(err) = result {
+		eprintln!("kptui: {err}");
+		std::process::exit(1);
+	}
 }
 
 fn handle_cli_flags() -> bool {
