@@ -30,10 +30,13 @@ fn parse_args(args: &[String]) -> Result<Command, String> {
 		[arg, ..] if matches!(arg.as_str(), "help" | "-h" | "--help") => Ok(Command::Help),
 		[arg, ..] if matches!(arg.as_str(), "version" | "-V" | "--version") => Ok(Command::Version),
 		[arg] if matches!(arg.as_str(), "slim" | "-s" | "--slim") => Ok(Command::Tui(true)),
+		[cmd, path] if matches!(cmd.as_str(), "export" | "-e" | "--export") => Ok(Command::Export(path.clone())),
+		[cmd, path] if matches!(cmd.as_str(), "import" | "-i" | "--import") => {
+			Ok(Command::Import { path: path.clone(), keyfile: None })
+		},
 		[cmd, path, keyfile] if matches!(cmd.as_str(), "import" | "-i" | "--import") => {
 			Ok(Command::Import { path: path.clone(), keyfile: Some(keyfile.clone()) })
 		},
-		[cmd, path] if matches!(cmd.as_str(), "export" | "-e" | "--export") => Ok(Command::Export(path.clone())),
 		_ => Err(format!("invalid argument(s): {}", args.join(" "))),
 	}
 }
@@ -68,6 +71,7 @@ fn main() {
 		Ok(command) => command,
 		Err(error) => {
 			eprintln!("kptui: {error}");
+			eprintln!("Usage: {} [slim | export PATH | import PATH [KEYFILE] | version | help]", env!("CARGO_PKG_NAME"));
 			exit(2);
 		}
 	};
