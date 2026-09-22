@@ -80,7 +80,7 @@ fn format_date_time(dt: chrono::NaiveDateTime) -> String {
 	dt.format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
-pub fn unlock_database(path: &Path, password: &str, keyfile_path: Option<&Path>) -> anyhow::Result<(Database, DatabaseKey, Vec<Entry>)> {
+pub fn unlock_database(path: &Path, password: &Zeroizing<String>, keyfile_path: Option<&Path>) -> anyhow::Result<(Database, DatabaseKey, Vec<Entry>)> {
 	let mut file = File::open(path).with_context(|| format!("couldn't open {}", path.display()))?;
 
 	let key = build_database_key(password, keyfile_path)?;
@@ -110,7 +110,7 @@ pub fn unlock_database(path: &Path, password: &str, keyfile_path: Option<&Path>)
 	Ok((db, key, entries))
 }
 
-pub fn create_database(path: &Path, password: &str, keyfile_path: Option<&Path>) -> anyhow::Result<(Database, DatabaseKey, Vec<Entry>)> {
+pub fn create_database(path: &Path, password: &Zeroizing<String>, keyfile_path: Option<&Path>) -> anyhow::Result<(Database, DatabaseKey, Vec<Entry>)> {
 	if path.exists() {
 		anyhow::bail!("a file already exists at {}", path.display());
 	}
@@ -127,7 +127,7 @@ pub fn create_database(path: &Path, password: &str, keyfile_path: Option<&Path>)
 	Ok((db, key, Vec::new()))
 }
 
-pub fn build_database_key(password: &str, keyfile_path: Option<&Path>) -> anyhow::Result<DatabaseKey> {
+pub fn build_database_key(password: &Zeroizing<String>, keyfile_path: Option<&Path>) -> anyhow::Result<DatabaseKey> {
 	let mut key = DatabaseKey::new().with_password(password);
 
 	if let Some(path) = keyfile_path {
@@ -141,6 +141,24 @@ pub fn build_database_key(password: &str, keyfile_path: Option<&Path>) -> anyhow
 	}
 
 	Ok(key)
+}
+
+pub fn export_database(path: &Path, password: &Zeroizing<String>, keyfile_path: Option<&Path>, entries: &[Entry]) -> anyhow::Result<()> {
+	if path.exists() {
+		anyhow::bail!("a file already exists at {}", path.display());
+	}
+
+	if let Some(parent) = path.parent() {
+		fs::create_dir_all(parent).with_context(|| format!("couldn't create {}", parent.display()))?;
+	}
+
+	let mut db = Database::new();
+	for entry in entries {
+		let mut entry = entry.clone();
+		write_entry(&mut db, &mut entry)?;
+	}
+	let key = build_database_key(password, keyfile_path)?;
+	write_to_disk(path, &key, &db)
 }
 
 pub fn save_database(path: &Path, key: &DatabaseKey, db: &mut Database, entries: &mut [Entry]) -> anyhow::Result<()> {
@@ -227,6 +245,7 @@ mod tests {
 	use std::fs;
 	use std::path::{Path, PathBuf};
 	use std::sync::atomic::{AtomicU64, Ordering};
+	use zeroize::Zeroizing;
 
 	static NEXT_TEST_DIR: AtomicU64 = AtomicU64::new(0);
 
@@ -266,26 +285,26 @@ mod tests {
 		let dir = TestDir::new();
 		let database_path = dir.join("password-only.kdbx");
 
-		create_database(&database_path, "correct horse", None).expect("password-only database should be created");
-		unlock_database(&database_path, "correct horse", None).expect("password-only database should unlock");
+		create_database(&database_path, &Zeroizing::new("correct horse".to_string()), None).expect("password-only database should be created");
+		unlock_database(&database_path, &Zeroizing::new("correct horse".to_string()), None).expect("password-only database should unlock");
 	}
 
 	#[test]
 	fn unlock_database_reads_entry_notes() {
 		let dir = TestDir::new();
 		let database_path = dir.join("notes.kdbx");
-		let (mut database, key, mut entries) = create_database(&database_path, "correct horse", None).expect("database should be created");
+		let (mut database, key, mut entries) = create_database(&database_path, &Zeroizing::new("correct horse".to_string()), None).expect("database should be created");
 
 		{
 			let mut root = database.root_mut();
 			let mut entry = root.add_entry();
 			entry.set_unprotected(fields::TITLE, "Entry with notes");
-			entry.set_unprotected(fields::NOTES, "first line\nsecond line");
+			entry.set_protected(fields::NOTES, "first line\nsecond line");
 		}
 
 		save_database(&database_path, &key, &mut database, &mut entries).expect("database should be saved");
 
-		let (_, _, entries) = unlock_database(&database_path, "correct horse", None).expect("database should unlock");
+		let (_, _, entries) = unlock_database(&database_path, &Zeroizing::new("correct horse".to_string()), None).expect("database should unlock");
 		let entry = entries.iter().find(|entry| entry.name == "Entry with notes").expect("entry should be loaded");
 
 		assert_eq!(entry.notes, "first line\nsecond line");
@@ -295,7 +314,7 @@ mod tests {
 	fn unlock_database_defaults_missing_notes_to_empty() {
 		let dir = TestDir::new();
 		let database_path = dir.join("no-notes.kdbx");
-		let (mut database, key, mut entries) = create_database(&database_path, "correct horse", None).expect("database should be created");
+		let (mut database, key, mut entries) = create_database(&database_path, &Zeroizing::new("correct horse".to_string()), None).expect("database should be created");
 
 		{
 			let mut root = database.root_mut();
@@ -305,7 +324,7 @@ mod tests {
 
 		save_database(&database_path, &key, &mut database, &mut entries).expect("database should be saved");
 
-		let (_, _, entries) = unlock_database(&database_path, "correct horse", None).expect("database should unlock");
+		let (_, _, entries) = unlock_database(&database_path, &Zeroizing::new("correct horse".to_string()), None).expect("database should unlock");
 		let entry = entries.iter().find(|entry| entry.name == "Entry without notes").expect("entry should be loaded");
 
 		assert!(entry.notes.is_empty());
@@ -318,11 +337,11 @@ mod tests {
 		let keyfile_path = dir.join("database.keyx");
 		fs::write(&keyfile_path, XML_V1_KEYFILE).expect("XML v1 keyfile should be written");
 
-		create_database(&database_path, "correct horse", Some(&keyfile_path)).expect("composite-key database should be created");
-		unlock_database(&database_path, "correct horse", Some(&keyfile_path)).expect("database should unlock with password and keyfile");
+		create_database(&database_path, &Zeroizing::new("correct horse".to_string()), Some(&keyfile_path)).expect("composite-key database should be created");
+		unlock_database(&database_path, &Zeroizing::new("correct horse".to_string()), Some(&keyfile_path)).expect("database should unlock with password and keyfile");
 
-		assert!(unlock_database(&database_path, "correct horse", None).is_err());
-		assert!(unlock_database(&database_path, "wrong password", Some(&keyfile_path)).is_err());
+		assert!(unlock_database(&database_path, &Zeroizing::new("correct horse".to_string()), None).is_err());
+		assert!(unlock_database(&database_path, &Zeroizing::new("wrong password".to_string()), Some(&keyfile_path)).is_err());
 	}
 
 	#[test]
@@ -333,14 +352,14 @@ mod tests {
 		fs::write(&keyfile_path, [42_u8; 32]).expect("keyfile should be written");
 
 		let (mut database, _, mut entries) =
-			create_database(&database_path, "old password", Some(&keyfile_path)).expect("composite-key database should be created");
-		let new_key = build_database_key("new password", Some(&keyfile_path)).expect("new composite key should be built");
+			create_database(&database_path, &Zeroizing::new("old password".to_string()), Some(&keyfile_path)).expect("composite-key database should be created");
+		let new_key = build_database_key(&Zeroizing::new("new password".to_string()), Some(&keyfile_path)).expect("new composite key should be built");
 
 		save_database(&database_path, &new_key, &mut database, &mut entries).expect("database should be re-encrypted");
 
-		unlock_database(&database_path, "new password", Some(&keyfile_path)).expect("new password and keyfile should unlock");
-		assert!(unlock_database(&database_path, "new password", None).is_err());
-		assert!(unlock_database(&database_path, "old password", Some(&keyfile_path)).is_err());
+		unlock_database(&database_path, &Zeroizing::new("new password".to_string()), Some(&keyfile_path)).expect("new password and keyfile should unlock");
+		assert!(unlock_database(&database_path, &Zeroizing::new("new password".to_string()), None).is_err());
+		assert!(unlock_database(&database_path, &Zeroizing::new("old password".to_string()), Some(&keyfile_path)).is_err());
 	}
 
 	#[test]
@@ -352,14 +371,14 @@ mod tests {
 		fs::write(&database_path, []).expect("placeholder database should be written");
 		fs::write(&empty_keyfile, []).expect("empty keyfile should be written");
 
-		let missing_error = unlock_database(&database_path, "secret", Some(&missing_keyfile))
+		let missing_error = unlock_database(&database_path, &Zeroizing::new("secret".to_string()), Some(&missing_keyfile))
 			.err()
 			.expect("missing keyfile should fail")
 			.to_string();
 		assert!(missing_error.contains("couldn't open keyfile"));
 		assert!(missing_error.contains(&missing_keyfile.display().to_string()));
 
-		let empty_error = unlock_database(&database_path, "secret", Some(&empty_keyfile)).err().expect("empty keyfile should fail").to_string();
+		let empty_error = unlock_database(&database_path, &Zeroizing::new("secret".to_string()), Some(&empty_keyfile)).err().expect("empty keyfile should fail").to_string();
 		assert!(empty_error.contains("keyfile"));
 		assert!(empty_error.contains("is empty"));
 	}
@@ -373,9 +392,9 @@ mod tests {
 		fs::write(&correct_keyfile, [7_u8; 32]).expect("correct keyfile should be written");
 		fs::write(&wrong_keyfile, [9_u8; 32]).expect("wrong keyfile should be written");
 
-		create_database(&database_path, "secret", Some(&correct_keyfile)).expect("composite-key database should be created");
+		create_database(&database_path, &Zeroizing::new("secret".to_string()), Some(&correct_keyfile)).expect("composite-key database should be created");
 
-		let error = unlock_database(&database_path, "secret", Some(&wrong_keyfile)).err().expect("wrong keyfile should fail").to_string();
+		let error = unlock_database(&database_path, &Zeroizing::new("secret".to_string()), Some(&wrong_keyfile)).err().expect("wrong keyfile should fail").to_string();
 		assert!(error.contains("password + keyfile"));
 		assert!(error.contains("Incorrect key"));
 	}
@@ -392,7 +411,7 @@ mod tests {
 
 		// Create a valid database first. This initial save needs an
 		// unobstructed temporary path.
-		let (mut database, key, mut entries) = create_database(&database_path, "correct horse", None).expect("database should be created");
+		let (mut database, key, mut entries) = create_database(&database_path, &Zeroizing::new("correct horse".to_string()), None).expect("database should be created");
 
 		// The initial save should have consumed its temporary file.
 		assert!(!tmp_path.exists(), "temporary file should not remain after successful creation");

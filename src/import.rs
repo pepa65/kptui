@@ -24,7 +24,7 @@ pub fn detect_format(path: &Path) -> anyhow::Result<ImportFormat> {
 	}
 }
 
-pub fn import_kdbx(path: &Path, password: &str) -> anyhow::Result<Vec<Entry>> {
+pub fn import_kdbx(path: &Path, password: &Zeroizing<String>) -> anyhow::Result<Vec<Entry>> {
 	let (_, _, entries) = unlock_database(path, password, None)?;
 	Ok(entries)
 }

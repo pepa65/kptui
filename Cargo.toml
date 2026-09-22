@@ -33,6 +33,7 @@ keepass = { version = "0.15.0", features = ["save_kdbx4", "totp"] }
 chrono = "0.4"
 unicode-width = "0.2"
 zeroize = { version = "1", features = ["derive"] }
+rpassword = "7"
 
 [profile.release]
 opt-level = "z"
