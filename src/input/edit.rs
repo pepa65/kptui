@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::{App, Screen};
-use crate::db::save_database;
+use crate::db::{parse_totp_edit_value, save_database, totp_edit_value};
 use crate::input::command::preview_entry;
 use crate::input::fieldedit::{EditAction, FieldEditor};
 
@@ -83,7 +83,7 @@ fn start_editing_field(app: &mut App) {
 		}
 
 		TOTP_INDEX => {
-			app.field_editor = Some(FieldEditor::with_text(&entry.totp));
+			app.field_editor = Some(FieldEditor::with_text(totp_edit_value(&entry.totp)));
 		}
 
 		NOTES_INDEX => {
@@ -123,13 +123,27 @@ fn commit_field(app: &mut App) {
 
 	let value = app.field_editor.take().map(|editor| editor.into_text()).unwrap_or_default();
 
+	if selected == TOTP_INDEX {
+		match parse_totp_edit_value(&value) {
+			Ok(totp) => {
+				if let Some(entry) = app.edit_entry.as_mut() {
+					entry.totp = totp;
+				}
+				app.editing_field = false;
+			}
+			Err(err) => {
+				app.status = Some(format!("TOTP should be SECRET DIGITS PERIOD: {err}"));
+				app.field_editor = Some(FieldEditor::with_text(&value));
+			}
+		}
+		return;
+	}
 	if let Some(entry) = app.edit_entry.as_mut() {
 		match selected {
 			NAME_INDEX => entry.name = value,
 			USER_INDEX => entry.user = value,
 			PASSWORD_INDEX => entry.password = value,
 			URL_INDEX => entry.url = value,
-			TOTP_INDEX => entry.totp = value,
 			NOTES_INDEX => entry.notes = value,
 			LAST_MODIFIED_INDEX => {}
 			_ => {}

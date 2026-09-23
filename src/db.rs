@@ -52,6 +52,81 @@ pub fn current_totp_code(raw: &str) -> Option<TotpCode> {
 	Some(TotpCode { code: Zeroizing::new(otp_code.code), valid_for: otp_code.valid_for })
 }
 
+pub fn totp_edit_value(raw: &str) -> String {
+	let Some(query) = raw.split_once('?').map(|(_, query)| query) else {
+		return raw.to_string();
+	};
+
+	let mut seed = None;
+	let mut digits = 6;
+	let mut period = 30;
+
+	for part in query.split('&') {
+		let Some((key, value)) = part.split_once('=') else {
+			continue;
+		};
+
+		match key {
+			"secret" => seed = Some(value),
+			"digits" => {
+				if let Ok(value) = value.parse() {
+					digits = value;
+				}
+			}
+			"period" => {
+				if let Ok(value) = value.parse() {
+					period = value;
+				}
+			}
+			_ => {}
+		}
+	}
+
+	let Some(seed) = seed else {
+		return raw.to_string();
+	};
+
+	match (digits, period) {
+		(6, 30) => seed.to_string(),
+		(_, 30) => format!("{seed} {digits}"),
+		_ => format!("{seed} {digits} {period}"),
+	}
+}
+
+pub fn parse_totp_edit_value(input: &str) -> anyhow::Result<String> {
+	let parts: Vec<&str> = input.split_whitespace().collect();
+	if parts.is_empty() {
+		return Ok(String::new());
+	}
+
+	if parts.len() > 3 {
+		anyhow::bail!("TOTP format is: SEED [DIGITS [PERIOD]]");
+	}
+
+	let seed = parts[0].to_ascii_uppercase();
+	if seed.is_empty() {
+		return Ok(String::new());
+	}
+
+	let digits = match parts.get(1) {
+		Some(value) => value.parse::<u32>().context("TOTP digits must be a number")?,
+		None => 6,
+	};
+	let period = match parts.get(2) {
+		Some(value) => value.parse::<u32>().context("TOTP period must be a number")?,
+		None => 30,
+	};
+	if !matches!(digits, 6 | 8) {
+		anyhow::bail!("TOTP digits must be 6 or 8");
+	}
+
+	if period == 0 {
+		anyhow::bail!("TOTP period must be greater than zero");
+	}
+
+	Ok(format!("otpauth://totp/?secret={seed}&digits={digits}&period={period}"))
+}
+
 fn urlencoding_encode(input: &str) -> String {
 	let mut out = String::with_capacity(input.len());
 	for b in input.bytes() {
@@ -275,7 +350,8 @@ mod tests {
 	fn unlock_database_reads_entry_notes() {
 		let dir = TestDir::new();
 		let database_path = dir.join("notes.kdbx");
-		let (mut database, key, mut entries) = create_database(&database_path, &Zeroizing::new("correct horse".to_string()), None).expect("database should be created");
+		let (mut database, key, mut entries) =
+			create_database(&database_path, &Zeroizing::new("correct horse".to_string()), None).expect("database should be created");
 
 		{
 			let mut root = database.root_mut();
@@ -296,7 +372,8 @@ mod tests {
 	fn unlock_database_defaults_missing_notes_to_empty() {
 		let dir = TestDir::new();
 		let database_path = dir.join("no-notes.kdbx");
-		let (mut database, key, mut entries) = create_database(&database_path, &Zeroizing::new("correct horse".to_string()), None).expect("database should be created");
+		let (mut database, key, mut entries) =
+			create_database(&database_path, &Zeroizing::new("correct horse".to_string()), None).expect("database should be created");
 
 		{
 			let mut root = database.root_mut();
@@ -320,7 +397,8 @@ mod tests {
 		fs::write(&keyfile_path, XML_V1_KEYFILE).expect("XML v1 keyfile should be written");
 
 		create_database(&database_path, &Zeroizing::new("correct horse".to_string()), Some(&keyfile_path)).expect("composite-key database should be created");
-		unlock_database(&database_path, &Zeroizing::new("correct horse".to_string()), Some(&keyfile_path)).expect("database should unlock with password and keyfile");
+		unlock_database(&database_path, &Zeroizing::new("correct horse".to_string()), Some(&keyfile_path))
+			.expect("database should unlock with password and keyfile");
 
 		assert!(unlock_database(&database_path, &Zeroizing::new("correct horse".to_string()), None).is_err());
 		assert!(unlock_database(&database_path, &Zeroizing::new("wrong password".to_string()), Some(&keyfile_path)).is_err());
@@ -333,8 +411,8 @@ mod tests {
 		let keyfile_path = dir.join("database.keyx");
 		fs::write(&keyfile_path, [42_u8; 32]).expect("keyfile should be written");
 
-		let (mut database, _, mut entries) =
-			create_database(&database_path, &Zeroizing::new("old password".to_string()), Some(&keyfile_path)).expect("composite-key database should be created");
+		let (mut database, _, mut entries) = create_database(&database_path, &Zeroizing::new("old password".to_string()), Some(&keyfile_path))
+			.expect("composite-key database should be created");
 		let new_key = build_database_key(&Zeroizing::new("new password".to_string()), Some(&keyfile_path)).expect("new composite key should be built");
 
 		save_database(&database_path, &new_key, &mut database, &mut entries).expect("database should be re-encrypted");
@@ -360,7 +438,10 @@ mod tests {
 		assert!(missing_error.contains("couldn't open keyfile"));
 		assert!(missing_error.contains(&missing_keyfile.display().to_string()));
 
-		let empty_error = unlock_database(&database_path, &Zeroizing::new("secret".to_string()), Some(&empty_keyfile)).err().expect("empty keyfile should fail").to_string();
+		let empty_error = unlock_database(&database_path, &Zeroizing::new("secret".to_string()), Some(&empty_keyfile))
+			.err()
+			.expect("empty keyfile should fail")
+			.to_string();
 		assert!(empty_error.contains("keyfile"));
 		assert!(empty_error.contains("is empty"));
 	}
@@ -376,7 +457,10 @@ mod tests {
 
 		create_database(&database_path, &Zeroizing::new("secret".to_string()), Some(&correct_keyfile)).expect("composite-key database should be created");
 
-		let error = unlock_database(&database_path, &Zeroizing::new("secret".to_string()), Some(&wrong_keyfile)).err().expect("wrong keyfile should fail").to_string();
+		let error = unlock_database(&database_path, &Zeroizing::new("secret".to_string()), Some(&wrong_keyfile))
+			.err()
+			.expect("wrong keyfile should fail")
+			.to_string();
 		assert!(error.contains("password + keyfile"));
 		assert!(error.contains("Incorrect key"));
 	}
@@ -393,7 +477,8 @@ mod tests {
 
 		// Create a valid database first. This initial save needs an
 		// unobstructed temporary path.
-		let (mut database, key, mut entries) = create_database(&database_path, &Zeroizing::new("correct horse".to_string()), None).expect("database should be created");
+		let (mut database, key, mut entries) =
+			create_database(&database_path, &Zeroizing::new("correct horse".to_string()), None).expect("database should be created");
 
 		// The initial save should have consumed its temporary file.
 		assert!(!tmp_path.exists(), "temporary file should not remain after successful creation");

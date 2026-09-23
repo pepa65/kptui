@@ -10,20 +10,19 @@
 
 * Compatible with the `.kdbx` (4) file format.
 * Fits in with the wider KeePass ecosystem.
-* Fast to open.
-* Keyboard-driven.
+* Fast to open, keyboard-driven.
 * Stores (only what it needs): `Name`, `Username`, `Password`, `TOTP`, `URL` and `Notes`
 
 ## Features
-- **KDBX4 vaults**: reads and writes standard `.kdbx` files, so you can open the same vault in KeePassXC, KeePassDX, or any other compatible client.
-- **Optional keyfile support**: unlocks vaults protected by a master password plus a KeePass keyfile while preserving password-only vault support.
-- **Fuzzy search**: start typing on the index screen to filter entries by name or user.
-- **TOTP codes**: generates live 2FA codes from a stored seed or `otpauth://` URI.
-- **Reuse warnings**: flags entries that share a password or username with another entry, so you can spot weak spots at a glance.
-- **Auto-lock**: the vault locks itself after a period of inactivity.
-- **Themeable**: ships with a default color scheme and supports custom themes.
-- **Change your master password**: from Settings, without needing to touch a file manager or another app.
-- **Import from other vaults or exports**: pull entries in from another `.kdbx` file, or from a CSV/JSON export produced by another password manager.
+* **KDBX4 vaults**: reads and writes standard `.kdbx` files, so you can open the same vault in KeePassXC, KeePassDX, or any other compatible client.
+* **Optional keyfile support**: unlocks vaults protected by a master password plus a KeePass keyfile while preserving password-only vault support.
+* **Filtered search**: start typing on the index screen to filter entries by name or user.
+* **TOTP codes**: generates live 2FA codes from a stored seed or `otpauth://` URI.
+  - Editable as: SECRET [DIGITS [PERIOD]] (PERIOD defaults to `30`, and DIGITS to `6`)
+* **Auto-lock**: the vault locks itself after a period of inactivity.
+* **Themeable**: ships with a default color scheme and supports custom themes.
+* **Change your master password**: from Settings, without needing to touch a file manager or another app.
+* **Import from other vaults or exports**: pull entries in from another `.kdbx` file, or from a CSV/JSON export produced by another password manager.
 
 ## Usage
 ```
