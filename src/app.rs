@@ -1,8 +1,7 @@
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use anyhow::Context;
 use crossterm::event::{self, Event};
 use keepass::{Database, DatabaseKey};
 use ratatui::{
@@ -113,61 +112,9 @@ pub struct App {
 }
 
 impl App {
-	pub fn new(config: Config, theme: Theme, slim_mode: bool, password: Zeroizing<String>) -> Self {
-		Self {
-			screen: Screen::Login,
-			password,
-			query: Zeroizing::new(String::new()),
-			max_len: 0,
-			theme,
-			config,
-			available_themes: Vec::new(),
-			settings_state: ListState::default(),
-			choosing_theme: false,
-			theme_state: ListState::default(),
-			changing_password: false,
-			password_change_step: PasswordChangeStep::Current,
-			current_password_buffer: Zeroizing::new(String::new()),
-			new_password_buffer: Zeroizing::new(String::new()),
-			new_password_confirm: Zeroizing::new(String::new()),
-			importing_database: false,
-			import_step: ImportStep::Path,
-			import_path_buffer: String::new(),
-			import_kdbx_password_buffer: Zeroizing::new(String::new()),
-			pending_import_path: None,
-			exporting_database: false,
-			export_step: ExportStep::Path,
-			export_path_buffer: String::new(),
-			pending_export_path: None,
-			login_error: None,
-			last_activity: Instant::now(),
-			index_state: TableState::default().with_selected(Some(0)),
-			index_page_size: 1,
-			confirm_index_delete: None,
-			edit_state: ListState::default(),
-			edit_entry: None,
-			edit_original: None,
-			edit_target: None,
-			editing_field: false,
-			field_editor: None,
-			field_editor_scroll: 0,
-			confirm_delete: false,
-			confirm_exit: false,
-			entries: Vec::new(),
-			filtered: Vec::new(),
-			kdbx: None,
-			db_key: None,
-			creating_database: false,
-			confirming_new_db_password: false,
-			new_db_confirm: Zeroizing::new(String::new()),
-			status: None,
-			should_quit: false,
-			slim_mode,
-		}
-	}
-
 	fn compute_filtered(&self) -> Vec<usize> {
 		let query = Zeroizing::new(self.query.to_lowercase());
+
 		let mut indices: Vec<usize> = self
 			.entries
 			.iter()
@@ -175,11 +122,13 @@ impl App {
 			.filter(|(_, entry)| query.is_empty() || entry.name.to_lowercase().contains(query.as_str()) || entry.user.to_lowercase().contains(query.as_str()))
 			.map(|(i, _)| i)
 			.collect();
+
 		indices.sort_by(|&a, &b| {
 			let ea = &self.entries[a];
 			let eb = &self.entries[b];
 			ea.name.to_lowercase().cmp(&eb.name.to_lowercase())
 		});
+
 		indices
 	}
 
@@ -239,7 +188,7 @@ fn maybe_auto_lock(app: &mut App) {
 	app.login_error = Some("Locked after inactivity".to_string());
 }
 
-fn load_app_config() -> (Config, Theme) {
+pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: bool, password: Zeroizing<String>) -> io::Result<()> {
 	let _ = crate::theme::ensure_default_themes();
 	let mut config = load_config().unwrap_or_default();
 	if config.default_database.is_none() {
@@ -250,53 +199,69 @@ fn load_app_config() -> (Config, Theme) {
 		}
 	}
 	let theme = load_theme(config.theme.as_deref()).unwrap_or_default();
-	(config, theme)
-}
-
-fn initialize_database(app: &mut App) {
-	if app.password.is_empty() {
-		return;
-	}
-
-	if database_missing(app) {
-		create_database_with_password(app);
-	} else {
-		attempt_unlock(app);
-	}
-}
-pub fn export(path: &Path, password: Zeroizing<String>) -> anyhow::Result<()> {
-	let (config, _theme) = load_app_config();
-	let db_path = config.default_database.as_deref().context("No default_database set in configfile")?;
-
-	let (_, _, entries) = crate::db::unlock_database(db_path, &password, config.keyfile.as_deref())?;
-	match crate::export::detect_format(path)? {
-		crate::export::ExportFormat::Csv => crate::export::export_csv(path, &entries),
-		crate::export::ExportFormat::Json => crate::export::export_json(path, &entries),
-		crate::export::ExportFormat::Kdbx => crate::db::export_database(path, &password, config.keyfile.as_deref(), &entries),
-	}
-}
-
-pub fn import(path: &Path, password: Zeroizing<String>, keyfile: Option<&Path>) -> anyhow::Result<()> {
-	let (config, _) = load_app_config();
-	let database_path = config.default_database.as_deref().context("no default database configured")?;
-	let imported = match crate::import::detect_format(path)? {
-		crate::import::ImportFormat::Kdbx => crate::import::import_kdbx(path, &password)?,
-		crate::import::ImportFormat::Csv => crate::import::import_csv(path)?,
-		crate::import::ImportFormat::Json => crate::import::import_json(path)?,
+	let mut app = App {
+		screen: Screen::Login,
+		password,
+		query: Zeroizing::new(String::new()),
+		max_len: 0,
+		theme,
+		config,
+		available_themes: Vec::new(),
+		settings_state: ListState::default(),
+		choosing_theme: false,
+		theme_state: ListState::default(),
+		changing_password: false,
+		password_change_step: PasswordChangeStep::Current,
+		current_password_buffer: Zeroizing::new(String::new()),
+		new_password_buffer: Zeroizing::new(String::new()),
+		new_password_confirm: Zeroizing::new(String::new()),
+		importing_database: false,
+		import_step: ImportStep::Path,
+		import_path_buffer: String::new(),
+		import_kdbx_password_buffer: Zeroizing::new(String::new()),
+		pending_import_path: None,
+		exporting_database: false,
+		export_step: ExportStep::Path,
+		export_path_buffer: String::new(),
+		pending_export_path: None,
+		login_error: None,
+		last_activity: Instant::now(),
+		index_state: TableState::default().with_selected(Some(0)),
+		index_page_size: 1,
+		confirm_index_delete: None,
+		edit_state: ListState::default(),
+		edit_entry: None,
+		edit_original: None,
+		edit_target: None,
+		editing_field: false,
+		field_editor: None,
+		field_editor_scroll: 0,
+		confirm_delete: false,
+		confirm_exit: false,
+		entries: Vec::new(),
+		filtered: Vec::new(),
+		kdbx: None,
+		db_key: None,
+		creating_database: false,
+		confirming_new_db_password: false,
+		new_db_confirm: Zeroizing::new(String::new()),
+		status: None,
+		should_quit: false,
+		slim_mode,
 	};
-	let (mut db, key, mut entries) = crate::db::unlock_database(database_path, &password, keyfile)?;
-	entries.extend(imported);
-	crate::db::save_database(database_path, &key, &mut db, &mut entries)
-}
-
-pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: bool, password: Zeroizing<String>) -> io::Result<()> {
-	let (config, theme) = load_app_config();
-	let mut app = App::new(config, theme, slim_mode, password);
-	initialize_database(&mut app);
+	if !app.password.is_empty() {
+		if database_missing(&app) {
+			create_database_with_password(&mut app);
+		} else {
+			attempt_unlock(&mut app);
+		}
+	}
 	const TICK_RATE: Duration = Duration::from_millis(200);
+
 	loop {
 		terminal.draw(|frame| {
 			frame.render_widget(Block::default().style(Style::default().bg(app.theme.background)), frame.area());
+
 			match app.screen {
 				Screen::Login => draw_login(frame, &mut app),
 				Screen::Index => draw_index(frame, &mut app),
@@ -304,6 +269,7 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 				Screen::Settings => draw_settings(frame, &mut app),
 			}
 		})?;
+
 		if event::poll(TICK_RATE)?
 			&& let Event::Key(key) = event::read()?
 		{
@@ -315,7 +281,9 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 				Screen::Settings => handle_settings_input(&mut app, key),
 			}
 		}
+
 		maybe_auto_lock(&mut app);
+
 		if app.should_quit {
 			break;
 		}

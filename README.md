@@ -5,7 +5,7 @@
 [![license](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://github.com/pepa65/kptui/blob/main/LICENSE)
 [![downloads](https://img.shields.io/crates/d/kptui.svg)](https://crates.io/crates/kptui)
 
-# kptui 0.20.0
+# kptui 0.21.0
 **TUI password manager for [KeePass](https://keepass.info/) vaults**
 
 * Compatible with the `.kdbx` (4) file format.
@@ -25,10 +25,16 @@
 - **Change your master password**: from Settings, without needing to touch a file manager or another app.
 - **Import from other vaults or exports**: pull entries in from another `.kdbx` file, or from a CSV/JSON export produced by another password manager.
 
+## Usage
+```
+kptui 0.21.0 - TUI password manager for KeePass vaults
+Usage:  kptui [slim | version | help]
+```
+
 ## Installing
 ### Download static single-binary
 ```
-wget https://github.com/pepa65/kptui/releases/download/0.20.0/kptui
+wget https://github.com/pepa65/kptui/releases/download/0.21.0/kptui
 sudo mv kptui /usr/local/bin
 sudo chown root:root /usr/local/bin/kptui
 sudo chmod +x /usr/local/bin/kptui
@@ -76,9 +82,9 @@ default_database = "~/passwords.kdbx"
 keyfile = "~/passwords.keyx"
 ```
 * The interface requires a terminal dimensions of at least 44 colums by 23 rows (but 12 rows is still functional).
-* Run in smaller terminals with: `kptui --slim` (at least 39 columns by 5 rows required, but 22 x 11 is still functional).
-* To show the version: `kptui --version`
-* To show a short help: `kptui --help`
+* Run in smaller terminals with: `kptui slim` (at least 39 columns by 5 rows required, but 22 x 11 is still functional).
+* To show the version: `kptui version`
+* To show a short help: `kptui help`
 * A password can also be provided non-interactively:
   - Piped in, like: `echo "$password" |kptui`
   - Directed in, like: `kptui <<<"$password"`

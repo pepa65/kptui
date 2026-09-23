@@ -143,24 +143,6 @@ pub fn build_database_key(password: &Zeroizing<String>, keyfile_path: Option<&Pa
 	Ok(key)
 }
 
-pub fn export_database(path: &Path, password: &Zeroizing<String>, keyfile_path: Option<&Path>, entries: &[Entry]) -> anyhow::Result<()> {
-	if path.exists() {
-		anyhow::bail!("a file already exists at {}", path.display());
-	}
-
-	if let Some(parent) = path.parent() {
-		fs::create_dir_all(parent).with_context(|| format!("couldn't create {}", parent.display()))?;
-	}
-
-	let mut db = Database::new();
-	for entry in entries {
-		let mut entry = entry.clone();
-		write_entry(&mut db, &mut entry)?;
-	}
-	let key = build_database_key(password, keyfile_path)?;
-	write_to_disk(path, &key, &db)
-}
-
 pub fn save_database(path: &Path, key: &DatabaseKey, db: &mut Database, entries: &mut [Entry]) -> anyhow::Result<()> {
 	for entry in entries.iter_mut() {
 		write_entry(db, entry)?;
