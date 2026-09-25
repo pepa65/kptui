@@ -12,6 +12,8 @@ use std::io::{self, IsTerminal, Write, stdout};
 use std::process::exit;
 use zeroize::Zeroizing;
 
+use crate::input::secret_pop;
+
 enum Command {
 	Help,
 	Version,
@@ -33,9 +35,9 @@ fn read_stdin() -> Zeroizing<String> {
 	if !io::stdin().is_terminal() {
 		io::stdin().read_line(&mut password).unwrap();
 		if password.ends_with('\n') {
-			util::secret_pop(&mut password);
+			secret_pop(&mut password);
 			if password.ends_with('\r') {
-				util::secret_pop(&mut password);
+				secret_pop(&mut password);
 			}
 		}
 	}

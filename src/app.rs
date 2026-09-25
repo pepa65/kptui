@@ -25,6 +25,7 @@ use crate::ui::index::draw_index;
 use crate::ui::login::draw_login;
 use crate::ui::settings::draw_settings;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
 	Login,
 	Index,
@@ -53,6 +54,7 @@ pub enum ExportStep {
 
 pub struct App {
 	pub screen: Screen,
+	pub login_settings: bool,
 	pub password: Zeroizing<String>,
 	pub query: Zeroizing<String>,
 	pub max_len: usize,
@@ -140,52 +142,16 @@ impl App {
 	}
 }
 
-fn maybe_auto_lock(app: &mut App) {
+fn maybe_auto_exit(app: &mut App) {
 	if !matches!(app.screen, Screen::Index | Screen::Edit | Screen::Settings) {
 		return;
 	}
 
-	if app.last_activity.elapsed() < app.config.auto_lock {
+	if app.config.auto_exit.is_zero() || app.last_activity.elapsed() < app.config.auto_exit {
 		return;
 	}
 
-	app.entries.clear();
-	app.filtered.clear();
-	app.password.clear();
-	app.query.clear();
-	app.kdbx = None;
-	app.db_key = None;
-	app.edit_entry = None;
-	app.edit_original = None;
-	app.edit_target = None;
-	app.editing_field = false;
-	app.field_editor = None;
-	app.field_editor_scroll = 0;
-	app.confirm_delete = false;
-	app.confirm_exit = false;
-	app.available_themes.clear();
-	app.settings_state.select(None);
-	app.choosing_theme = false;
-	app.theme_state.select(None);
-	app.creating_database = false;
-	app.confirming_new_db_password = false;
-	app.new_db_confirm.clear();
-	app.changing_password = false;
-	app.password_change_step = PasswordChangeStep::Current;
-	app.current_password_buffer.clear();
-	app.new_password_buffer.clear();
-	app.new_password_confirm.clear();
-	app.importing_database = false;
-	app.import_step = ImportStep::Path;
-	app.import_path_buffer.clear();
-	app.import_kdbx_password_buffer.clear();
-	app.pending_import_path = None;
-	app.exporting_database = false;
-	app.export_step = ExportStep::Path;
-	app.export_path_buffer.clear();
-	app.pending_export_path = None;
-	app.screen = Screen::Login;
-	app.login_error = Some("Locked after inactivity".to_string());
+	app.should_quit = true;
 }
 
 pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: bool, password: Zeroizing<String>) -> io::Result<()> {
@@ -201,6 +167,7 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 	let theme = load_theme(config.theme.as_deref()).unwrap_or_default();
 	let mut app = App {
 		screen: Screen::Login,
+		login_settings: false,
 		password,
 		query: Zeroizing::new(String::new()),
 		max_len: 0,
@@ -275,14 +242,14 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 		{
 			app.last_activity = Instant::now();
 			match app.screen {
-				Screen::Login => handle_login_input(&mut app, key.code),
+				Screen::Login => handle_login_input(&mut app, key),
 				Screen::Index => handle_index_input(&mut app, key),
 				Screen::Edit => handle_edit_input(&mut app, key),
 				Screen::Settings => handle_settings_input(&mut app, key),
 			}
 		}
 
-		maybe_auto_lock(&mut app);
+		maybe_auto_exit(&mut app);
 
 		if app.should_quit {
 			break;

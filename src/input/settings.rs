@@ -7,6 +7,7 @@ use crate::app::{App, ExportStep, ImportStep, PasswordChangeStep, Screen};
 use crate::config::save_config;
 use crate::db::{Entry, build_database_key, save_database, unlock_database};
 use crate::input::fieldedit::{EditAction, FieldEditor};
+use crate::input::secret_pop;
 use crate::theme::load_theme;
 use crate::util::expand_tilde;
 
@@ -14,7 +15,7 @@ pub const ROW_COUNT: usize = 7;
 
 pub const DATABASE_ROW: usize = 0;
 pub const KEYFILE_ROW: usize = 1;
-pub const AUTO_LOCK_ROW: usize = 2;
+pub const AUTO_EXIT_ROW: usize = 2;
 pub const THEME_ROW: usize = 3;
 pub const CHANGE_PASSWORD_ROW: usize = 4;
 pub const IMPORT_ROW: usize = 5;
@@ -66,6 +67,9 @@ pub fn handle_settings_input(app: &mut App, key: KeyEvent) {
 		KeyCode::Esc => {
 			app.status = None;
 			app.screen = Screen::Index;
+			if app.login_settings {
+				app.should_quit = true;
+			}
 		}
 
 		_ => {}
@@ -80,7 +84,7 @@ fn activate_selected(app: &mut App) {
 	match selected {
 		DATABASE_ROW => start_editing_database(app),
 		KEYFILE_ROW => start_editing_keyfile(app),
-		AUTO_LOCK_ROW => start_editing_auto_lock(app),
+		AUTO_EXIT_ROW => start_editing_auto_exit(app),
 		THEME_ROW => start_choosing_theme(app),
 		CHANGE_PASSWORD_ROW => start_change_password(app),
 		IMPORT_ROW => start_import(app),
@@ -105,8 +109,8 @@ fn start_editing_keyfile(app: &mut App) {
 	app.status = None;
 }
 
-fn start_editing_auto_lock(app: &mut App) {
-	app.field_editor = Some(FieldEditor::with_text(app.config.auto_lock.as_secs().to_string()));
+fn start_editing_auto_exit(app: &mut App) {
+	app.field_editor = Some(FieldEditor::with_text(app.config.auto_exit.as_secs().to_string()));
 	app.editing_field = true;
 	app.status = None;
 }
@@ -148,8 +152,8 @@ fn commit_field(app: &mut App) {
 			app.config.keyfile = if value.trim().is_empty() { None } else { Some(expand_tilde(value.trim())) };
 		}
 
-		AUTO_LOCK_ROW => match parse_seconds(&value) {
-			Ok(secs) => app.config.auto_lock = Duration::from_secs(secs),
+		AUTO_EXIT_ROW => match parse_seconds(&value) {
+			Ok(secs) => app.config.auto_exit = Duration::from_secs(secs),
 			Err(err) => {
 				app.status = Some(err);
 				return;
@@ -213,7 +217,7 @@ fn handle_change_password_input(app: &mut App, key: KeyCode) {
 				PasswordChangeStep::ConfirmNew => &mut app.new_password_confirm,
 			};
 
-			buffer.pop();
+			secret_pop(buffer);
 		}
 
 		KeyCode::Enter => match app.password_change_step {
@@ -341,7 +345,7 @@ fn handle_import_input(app: &mut App, key: KeyCode) {
 				ImportStep::KdbxPassword => &mut app.import_kdbx_password_buffer,
 			};
 
-			buffer.pop();
+			secret_pop(buffer);
 		}
 
 		KeyCode::Enter => match app.import_step {
@@ -466,7 +470,7 @@ fn handle_export_input(app: &mut App, key: KeyEvent) {
 			app.status = None;
 
 			if app.export_step == ExportStep::Path {
-				app.export_path_buffer.pop();
+				secret_pop(&mut app.export_path_buffer);
 			}
 		}
 
@@ -634,7 +638,7 @@ fn apply_selected_theme(app: &mut App) {
 fn settings_rows_are_contiguous() {
 	assert_eq!(DATABASE_ROW, 0);
 	assert_eq!(KEYFILE_ROW, 1);
-	assert_eq!(AUTO_LOCK_ROW, 2);
+	assert_eq!(AUTO_EXIT_ROW, 2);
 	assert_eq!(THEME_ROW, 3);
 	assert_eq!(CHANGE_PASSWORD_ROW, 4);
 	assert_eq!(IMPORT_ROW, 5);

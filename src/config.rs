@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::util::expand_tilde;
 
 const SAMPLE_CONFIG: &str = include_str!("../sample-config.toml");
-const AUTO_LOCK: u64 = 300;
+const AUTO_EXIT: u64 = 300;
 const CONFIGFILE: &str = "~/.config/kptui/config.toml";
 
 fn sibling_tmp_path(path: &Path) -> PathBuf {
@@ -20,13 +20,13 @@ fn sibling_tmp_path(path: &Path) -> PathBuf {
 pub struct Config {
 	pub default_database: Option<PathBuf>,
 	pub keyfile: Option<PathBuf>,
-	pub auto_lock: Duration,
+	pub auto_exit: Duration,
 	pub theme: Option<String>,
 }
 
 impl Default for Config {
 	fn default() -> Self {
-		Self { default_database: None, keyfile: None, auto_lock: Duration::from_secs(AUTO_LOCK), theme: None }
+		Self { default_database: None, keyfile: None, auto_exit: Duration::from_secs(AUTO_EXIT), theme: None }
 	}
 }
 
@@ -34,7 +34,7 @@ impl Default for Config {
 struct ConfigFile {
 	default_database: Option<String>,
 	keyfile: Option<String>,
-	auto_lock: Option<u64>,
+	auto_exit: Option<u64>,
 	theme: Option<String>,
 }
 
@@ -75,7 +75,7 @@ fn parse_config(text: &str) -> anyhow::Result<Config> {
 	Ok(Config {
 		default_database: raw.default_database.map(|s| expand_tilde(&s)),
 		keyfile: raw.keyfile.map(|s| expand_tilde(&s)),
-		auto_lock: raw.auto_lock.map(Duration::from_secs).unwrap_or(defaults.auto_lock),
+		auto_exit: raw.auto_exit.map(Duration::from_secs).unwrap_or(defaults.auto_exit),
 		theme: raw.theme,
 	})
 }
@@ -84,7 +84,7 @@ fn parse_config(text: &str) -> anyhow::Result<Config> {
 struct ConfigFileOut<'a> {
 	default_database: Option<String>,
 	keyfile: Option<String>,
-	auto_lock: u64,
+	auto_exit: u64,
 	theme: Option<&'a str>,
 }
 
@@ -126,7 +126,7 @@ fn serialize_config(config: &Config) -> anyhow::Result<String> {
 	let out = ConfigFileOut {
 		default_database: config.default_database.as_ref().map(|p| p.display().to_string()),
 		keyfile: config.keyfile.as_ref().map(|p| p.display().to_string()),
-		auto_lock: config.auto_lock.as_secs(),
+		auto_exit: config.auto_exit.as_secs(),
 		theme: config.theme.as_deref(),
 	};
 

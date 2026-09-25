@@ -27,9 +27,11 @@ pub fn preview_entry(app: &mut App) {
 	let Some(selected) = app.index_state.selected() else {
 		return;
 	};
+
 	let Some(&entry_idx) = app.filtered.get(selected) else {
 		return;
 	};
+
 	let Some(entry) = app.entries.get(entry_idx) else {
 		return;
 	};
@@ -43,17 +45,20 @@ pub fn preview_entry(app: &mut App) {
 	app.screen = Edit;
 }
 
-fn open_settings(app: &mut App) {
+pub fn open_settings(app: &mut App) {
 	app.status = None;
-	app.available_themes = crate::theme::list_theme_names().unwrap_or_default();
-
+	app.available_themes = match crate::theme::list_theme_names() {
+		Ok(themes) => themes,
+		Err(err) => {
+			app.status = Some(format!("Couldn't list themes: {err:#}"));
+			Vec::new()
+		}
+	};
 	let current_idx = app.config.theme.as_deref().and_then(|current| {
 		let current = crate::theme::slugify(current);
 		app.available_themes.iter().position(|name| crate::theme::slugify(name) == current)
 	});
-
 	let selected = current_idx.or(if app.available_themes.is_empty() { None } else { Some(0) });
-
 	app.settings_state.select(selected);
 	app.screen = Settings;
 }

@@ -5,7 +5,7 @@
 [![license](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://github.com/pepa65/kptui/blob/main/LICENSE)
 [![downloads](https://img.shields.io/crates/d/kptui.svg)](https://crates.io/crates/kptui)
 
-# kptui 0.22.0
+# kptui 0.23.0
 **TUI password manager for [KeePass](https://keepass.info/) vaults**
 
 * Compatible with the `.kdbx` (4) file format.
@@ -26,14 +26,14 @@
 
 ## Usage
 ```
-kptui 0.22.0 - TUI password manager for KeePass vaults
+kptui 0.23.0 - TUI password manager for KeePass vaults
 Usage:  kptui [slim | version | help]
 ```
 
 ## Installing
 ### Download static single-binary
 ```
-wget https://github.com/pepa65/kptui/releases/download/0.22.0/kptui
+wget https://github.com/pepa65/kptui/releases/download/0.23.0/kptui
 sudo mv kptui /usr/local/bin
 sudo chown root:root /usr/local/bin/kptui
 sudo chmod +x /usr/local/bin/kptui
@@ -95,8 +95,8 @@ See `sample-config.toml` in this repo, or:
 ```toml
 default_database = "~/.local/share/kptui/default.kdbx"
 keyfile = "~/.local/share/kptui/default.keyx"  # Optional (omit for password-only vaults)
-auto_lock = 300  # Seconds of inactivity before locking
-theme = "melange_dark.toml"
+auto_exit = 300  # Seconds of inactivity before exiting the app
+theme = "melange_dark.toml"  # Theme from ~/.local/share/kptui/themes
 ```
 
 All fields are optional, the above are the default values.
@@ -109,7 +109,7 @@ All fields are optional, the above are the default values.
 * The keyfile's path is stored in the config, never its contents.
 * Changing the master password re-encrypts the whole vault in place, and requires entering the _current_ password first.
   For a keyfile-protected vault, the configured keyfile remains part of the new composite key.
-* The app locks after `auto_lock` seconds of inactivity, clearing decrypted entries and the master password from memory.
-  All edits and changes will be lost.
+* The app exits after `auto_exit` seconds of inactivity, clearing decrypted entries and the master password from memory.
+  All edits and changes will be lost (0: never auto-exit).
 * When the app is open and the vault not locked, secrets are kept in memory!
 * When the app exits, there are no plaintext secrets left anywhere in memory.

@@ -1,25 +1,38 @@
 use std::time::Instant;
 
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use zeroize::Zeroize;
 
 use crate::app::{App, Screen};
 use crate::config::save_config;
 use crate::db::{create_database, unlock_database};
-use crate::util::{default_new_database_path, secret_pop};
+use crate::input::command::open_settings;
+use crate::input::secret_pop;
+use crate::util::default_new_database_path;
 
-pub fn handle_login_input(app: &mut App, key: KeyCode) {
+pub fn handle_login_input(app: &mut App, key: KeyEvent) {
 	if app.creating_database {
-		handle_create_database_input(app, key);
+		handle_create_database_input(app, key.code);
+		return;
+	}
+
+	if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
+		open_settings(app);
+		app.screen = Screen::Settings;
+		app.login_settings = true;
 		return;
 	}
 
 	if database_missing(app) {
-		handle_missing_database_input(app, key);
+		handle_missing_database_input(app, key.code);
 		return;
 	}
 
-	match key {
+	match key.code {
+		KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+			app.screen = Screen::Settings;
+		}
+
 		KeyCode::Char(c) => {
 			app.login_error = None;
 

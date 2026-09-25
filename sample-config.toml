@@ -4,8 +4,8 @@ default_database = "~/.local/share/kptui/default.kdbx"
 # Optional KeePass keyfile (leave unset for password-only vaults)
 #keyfile = "~/.local/share/kptui/default.keyx"
 
-# Seconds of inactivity before locking the vault
-auto_lock = 300
+# Seconds of inactivity before exiting the app (0: never auto-exit)
+auto_exit = 300
 
 # Name of a theme installed in ~/.config/kptui/themes/
 theme = "melange_dark.toml"

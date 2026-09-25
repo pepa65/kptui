@@ -3,11 +3,11 @@ use ratatui::{
 	layout::{Alignment, Constraint, Direction, Layout, Rect},
 	style::Style,
 	text::{Line, Span},
-	widgets::{Block, Borders, List, ListItem, Padding, Paragraph},
+	widgets::{Block, Borders, Clear, List, ListItem, Padding, Paragraph},
 };
 
 use crate::app::App;
-use crate::input::settings::{AUTO_LOCK_ROW, DATABASE_ROW, KEYFILE_ROW, THEME_ROW};
+use crate::input::settings::{AUTO_EXIT_ROW, DATABASE_ROW, KEYFILE_ROW, THEME_ROW};
 use crate::util::wrap_help_items;
 
 fn centered_cursor_x(input_area: Rect, typed_len: u16) -> u16 {
@@ -91,7 +91,7 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 
 	let keyfile_value = app.config.keyfile.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
 
-	let auto_lock_value = app.config.auto_lock.as_secs().to_string();
+	let auto_exit_value = if app.config.auto_exit.is_zero() { "0 (never)".to_string() } else { app.config.auto_exit.as_secs().to_string() };
 
 	let theme_value = if app.available_themes.is_empty() {
 		Line::from(Span::styled("no themes found in ~/.config/kptui/themes", warning))
@@ -105,7 +105,7 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 	let items = vec![
 		field(DATABASE_ROW, "Default database", database_value),
 		field(KEYFILE_ROW, "Keyfile (optional)", keyfile_value),
-		field(AUTO_LOCK_ROW, "Auto-lock (seconds)", auto_lock_value),
+		field(AUTO_EXIT_ROW, "Auto-exit (seconds)", auto_exit_value),
 		ListItem::new(vec![
 			Line::from(Span::styled("Theme", if selected == THEME_ROW { editing_style } else { label_style })),
 			theme_value,
@@ -128,7 +128,13 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 		]),
 	];
 
-	let list = List::new(items).block(Block::default().borders(Borders::ALL).padding(Padding::horizontal(1)).border_style(border_style).title(" Settings "));
+	let list = List::new(items).block(
+		Block::default()
+			.borders(Borders::ALL)
+			.padding(Padding::horizontal(1))
+			.border_style(border_style)
+			.title(" Configuration "),
+	);
 
 	frame.render_stateful_widget(list, vertical[0], &mut app.settings_state);
 
@@ -151,11 +157,9 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 
 		if editor_width > 0 {
 			let (visible, cursor_column) = editor.single_line_view(editor_width as usize);
-
 			let field_area = Rect { x: editor_x, y: value_y, width: editor_width, height: 1 };
-
+			frame.render_widget(Clear, field_area);
 			frame.render_widget(Paragraph::new(visible).style(normal), field_area);
-
 			let cursor_x = field_area.x + cursor_column as u16;
 			frame.set_cursor_position((cursor_x, field_area.y));
 		}
