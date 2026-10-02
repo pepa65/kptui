@@ -3,6 +3,7 @@ use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
+use keepass::config::DatabaseVersion;
 use keepass::db::{EntryId, EntryMut, EntryRef, Times, fields};
 use keepass::{Database, DatabaseKey};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
@@ -193,12 +194,13 @@ pub fn create_database(path: &Path, password: &Zeroizing<String>, keyfile_path: 
 	if let Some(parent) = path.parent() {
 		fs::create_dir_all(parent).with_context(|| format!("couldn't create {}", parent.display()))?;
 	}
-
-	let db = Database::new();
+	let mut db = Database::new();
+	if let keepass::config::KdfConfig::Argon2 { ref mut iterations, ref mut memory, .. } = db.config.kdf_config {
+		*iterations = 90;
+		*memory = 262144;
+	}
 	let key = build_database_key(password, keyfile_path)?;
-
-	write_to_disk(path, &key, &db)?;
-
+	write_to_disk(path, &key, &mut db)?;
 	Ok((db, key, Vec::new()))
 }
 
@@ -222,35 +224,30 @@ pub fn save_database(path: &Path, key: &DatabaseKey, db: &mut Database, entries:
 	for entry in entries.iter_mut() {
 		write_entry(db, entry)?;
 	}
-
 	write_to_disk(path, key, db)
 }
 
-fn write_to_disk(path: &Path, key: &DatabaseKey, db: &Database) -> anyhow::Result<()> {
+fn write_to_disk(path: &Path, key: &DatabaseKey, db: &mut Database) -> anyhow::Result<()> {
+	// keepass currently only supports writing KDBX 4.1, kptui always writes 4.1
+	db.config.version = DatabaseVersion::KDB4(1);
 	let tmp_path = sibling_tmp_path(path);
-
 	let mut options = OpenOptions::new();
 	options.write(true).create_new(true);
-
 	#[cfg(unix)]
 	{
 		use std::os::unix::fs::OpenOptionsExt;
 		options.mode(0o600);
 	}
-
 	let mut file = options.open(&tmp_path).with_context(|| format!("couldn't create {}", tmp_path.display()))?;
-
 	let result = (|| {
 		db.save(&mut file, key.clone()).map_err(|err| anyhow::anyhow!("failed to write database: {err}"))?;
 		file.sync_all().with_context(|| format!("couldn't sync {}", tmp_path.display()))?;
 		fs::rename(&tmp_path, path).with_context(|| format!("couldn't replace {}", path.display()))?;
 		Ok(())
 	})();
-
 	if result.is_err() {
 		let _ = fs::remove_file(&tmp_path);
 	}
-
 	result
 }
 

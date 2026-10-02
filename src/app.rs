@@ -14,7 +14,7 @@ use zeroize::Zeroizing;
 
 use crate::config::{Config, load_config};
 use crate::db::Entry;
-use crate::input::edit::handle_edit_input;
+use crate::input::edit::{handle_edit_input, process_pending_save};
 use crate::input::fieldedit::FieldEditor;
 use crate::input::index::handle_index_input;
 use crate::input::login::{attempt_unlock, create_database_with_password, database_missing, handle_login_input};
@@ -68,6 +68,7 @@ pub struct App {
 	pub editing_field: bool,
 	pub field_editor: Option<FieldEditor>,
 	pub field_editor_scroll: usize,
+	pub pending_save: bool,
 	pub confirm_delete: bool,
 	pub confirm_exit: bool,
 	pub entries: Vec<Entry>,
@@ -203,6 +204,7 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 		editing_field: false,
 		field_editor: None,
 		field_editor_scroll: 0,
+		pending_save: false,
 		confirm_delete: false,
 		confirm_exit: false,
 		entries: Vec::new(),
@@ -228,7 +230,6 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 	loop {
 		terminal.draw(|frame| {
 			frame.render_widget(Block::default().style(Style::default().bg(app.theme.background)), frame.area());
-
 			match app.screen {
 				Screen::Login => draw_login(frame, &mut app),
 				Screen::Index => draw_index(frame, &mut app),
@@ -236,7 +237,10 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 				Screen::Settings => draw_settings(frame, &mut app),
 			}
 		})?;
-
+		if app.pending_save {
+			process_pending_save(&mut app);
+			continue;
+		}
 		if event::poll(TICK_RATE)?
 			&& let Event::Key(key) = event::read()?
 		{
@@ -248,9 +252,7 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 				Screen::Settings => handle_settings_input(&mut app, key),
 			}
 		}
-
 		maybe_auto_exit(&mut app);
-
 		if app.should_quit {
 			break;
 		}

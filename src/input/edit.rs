@@ -1,4 +1,5 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use keepass::config::DatabaseVersion;
 
 use crate::app::{App, Screen};
 use crate::db::{parse_totp_edit_value, save_database, totp_edit_value};
@@ -27,7 +28,12 @@ pub fn handle_edit_input(app: &mut App, key: KeyEvent) {
 
 	match key.code {
 		KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-			save_and_reopen_edit(app);
+			app.pending_save = true;
+			app.status = match app.kdbx.as_ref().map(|db| db.config.version.clone()) {
+				Some(DatabaseVersion::KDB4(1)) => Some("Saving...".to_string()),
+				Some(version) => Some(format!("Saving {version} to KDBX4.1...")),
+				None => Some("Saving...".to_string()),
+			};
 		}
 		_ => {
 			app.status = None;
@@ -193,21 +199,6 @@ fn handle_exit_confirmation(app: &mut App, key: KeyCode) {
 	}
 }
 
-fn save_and_reopen_edit(app: &mut App) {
-	let Some(saved_idx) = save_edit(app) else {
-		reset_edit_state(app);
-		return;
-	};
-
-	reset_edit_state(app);
-	let Some(filtered_pos) = app.filtered.iter().position(|&idx| idx == saved_idx) else {
-		return;
-	};
-
-	app.index_state.select(Some(filtered_pos));
-	preview_entry(app);
-}
-
 fn close_edit(app: &mut App) {
 	save_edit(app);
 	reset_edit_state(app);
@@ -244,10 +235,26 @@ fn save_edit(app: &mut App) -> Option<usize> {
 		}
 	};
 	app.refresh_filter();
-	if let Some(idx) = saved_idx {
-		persist_entry(app, idx);
-	}
 	saved_idx
+}
+
+pub(crate) fn process_pending_save(app: &mut App) {
+	if !app.pending_save {
+		return;
+	}
+
+	app.pending_save = false;
+	let Some(saved_idx) = save_edit(app) else {
+		reset_edit_state(app);
+		return;
+	};
+
+	persist_entry(app, saved_idx);
+	reset_edit_state(app);
+	if let Some(filtered_pos) = app.filtered.iter().position(|&idx| idx == saved_idx) {
+		app.index_state.select(Some(filtered_pos));
+		preview_entry(app);
+	}
 }
 
 fn persist_entry(app: &mut App, idx: usize) {
@@ -261,7 +268,7 @@ fn persist_entry(app: &mut App, idx: usize) {
 	};
 
 	match save_database(path, key, db, std::slice::from_mut(target)) {
-		Ok(()) => app.status = Some("Saved".to_string()),
+		Ok(()) => {}
 		Err(err) => app.status = Some(format!("Failed to save: {err:#}")),
 	}
 }
