@@ -1,6 +1,6 @@
 [package]
 name = "kptui"
-version = "0.24.0"
+version = "0.25.0"
 edition = "2024"
 rust-version = "1.89"
 description = "Highly secure TUI password manager for KeePass KDBX vaults"
