@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::util::expand_tilde;
 
-const SAMPLE_CONFIG: &str = include_str!("../sample-config.toml");
+const SAMPLE_CONFIG: &str = include_str!("../default_config.toml");
 const AUTO_EXIT: u64 = 300;
 const CONFIGFILE: &str = "~/.config/kptui/config.toml";
 
