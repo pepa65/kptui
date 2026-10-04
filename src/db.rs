@@ -1,6 +1,8 @@
 use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
+use std::process;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
 use keepass::config::DatabaseVersion;
@@ -242,7 +244,7 @@ fn write_to_disk(path: &Path, key: &DatabaseKey, db: &mut Database) -> anyhow::R
 	let result = (|| {
 		db.save(&mut file, key.clone()).map_err(|err| anyhow::anyhow!("failed to write database: {err}"))?;
 		file.sync_all().with_context(|| format!("couldn't sync {}", tmp_path.display()))?;
-		fs::rename(&tmp_path, path).with_context(|| format!("couldn't replace {}", path.display()))?;
+		fs::rename(&tmp_path, path).with_context(|| format!("couldn't replace {} with {}", path.display(), &tmp_path.display()))?;
 		Ok(())
 	})();
 	if result.is_err() {
@@ -288,7 +290,7 @@ fn apply_fields(e: &mut EntryMut<'_>, entry: &Entry) {
 
 fn sibling_tmp_path(path: &Path) -> PathBuf {
 	let mut name: OsString = path.as_os_str().to_owned();
-	name.push(".tmp");
+	name.push(format!(".tmp-{}-{}", process::id(), SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));
 	PathBuf::from(name)
 }
 
