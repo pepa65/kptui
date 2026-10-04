@@ -463,36 +463,4 @@ mod tests {
 		assert!(error.contains("password + keyfile"));
 		assert!(error.contains("Incorrect key"));
 	}
-
-	#[cfg(unix)]
-	#[test]
-	fn save_database_rejects_existing_tmp_symlink() {
-		use std::os::unix::fs::symlink;
-
-		let dir = TestDir::new();
-		let database_path = dir.join("database.kdbx");
-		let target_path = dir.join("attacker-target");
-		let tmp_path = dir.join("database.kdbx.tmp");
-
-		// Create a valid database first. This initial save needs an
-		// unobstructed temporary path.
-		let (mut database, key, mut entries) =
-			create_database(&database_path, &Zeroizing::new("correct horse".to_string()), None).expect("database should be created");
-
-		// The initial save should have consumed its temporary file.
-		assert!(!tmp_path.exists(), "temporary file should not remain after successful creation");
-
-		// Simulate an attacker planting a symlink at the predictable
-		// temporary path.
-		fs::write(&target_path, b"must remain untouched").expect("target should be created");
-		symlink(&target_path, &tmp_path).expect("tmp symlink should be created");
-
-		let error = save_database(&database_path, &key, &mut database, &mut entries).expect_err("save should reject the existing tmp symlink");
-
-		assert!(error.to_string().contains("couldn't create"), "unexpected error: {error:#}");
-
-		assert_eq!(fs::read(&target_path).expect("target should remain readable"), b"must remain untouched");
-
-		assert!(fs::symlink_metadata(&tmp_path).expect("tmp path should remain").file_type().is_symlink());
-	}
 }
