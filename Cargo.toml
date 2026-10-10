@@ -30,7 +30,6 @@ csv = "1"
 anyhow = "1"
 toml = "1"
 keepass = { version = "0.15.0", features = ["save_kdbx4", "totp"] }
-keepass = { path = "../keepass-rs", features = ["save_kdbx4", "totp"] }
 chrono = "0.4"
 unicode-width = "0.2"
 zeroize = { version = "1", features = ["derive"] }
