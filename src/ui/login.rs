@@ -17,7 +17,7 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 
 	let vertical = Layout::default()
 		.direction(Direction::Vertical)
-		.constraints([Constraint::Fill(1),Constraint::Length(logo_height), Constraint::Length(1), Constraint::Length(3), Constraint::Fill(1)])
+		.constraints([Constraint::Fill(1), Constraint::Length(logo_height), Constraint::Length(1), Constraint::Length(3), Constraint::Fill(1)])
 		.split(area);
 
 	let logo_area = vertical[1];
@@ -57,9 +57,13 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 		BoxContent::Masked(buf) => "•".repeat(buf.chars().count()),
 		BoxContent::Static(text) => text.to_string(),
 	};
-	let input = Paragraph::new(input_text)
-		.alignment(Alignment::Center)
-		.block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(app.theme.border)).title(title).title_style(Style::default().fg(app.theme.error)));
+	let input = Paragraph::new(input_text).alignment(Alignment::Center).block(
+		Block::default()
+			.borders(Borders::ALL)
+			.border_style(Style::default().fg(app.theme.border))
+			.title(title)
+			.title_style(Style::default().fg(app.theme.error)),
+	);
 	if !app.slim_mode {
 		let claws_style = Style::default().fg(app.theme.claws);
 		let claws_light_style = Style::default().fg(app.theme.claws_light);
@@ -143,10 +147,8 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 		frame.render_widget(logo, logo_area);
 	}
 	let path = app.config.default_database.clone().unwrap_or_else(default_new_database_path);
-	let filename = Paragraph::new(path.display().to_string())
-    .alignment(Alignment::Center)
-    .style(Style::default().fg(app.theme.warning));
-frame.render_widget(filename, filename_area);
+	let filename = Paragraph::new(path.display().to_string()).alignment(Alignment::Center).style(Style::default().fg(app.theme.warning));
+	frame.render_widget(filename, filename_area);
 	frame.render_widget(input, input_area);
 	if let Some(error) = &app.login_error {
 		let error_area = Rect { x: input_area.x, y: input_area.y + input_area.height, width: input_area.width, height: 3 };
@@ -167,7 +169,7 @@ frame.render_widget(filename, filename_area);
 	} else if missing {
 		let hint_area = Rect { x: input_area.x, y: input_area.y + input_area.height, width: input_area.width, height: 1 };
 
-		let hint = Paragraph::new("[c] Create the new database  [Esc] Quit")
+		let hint = Paragraph::new("[c] Create database  [^c] Config  [Esc] Quit")
 			.alignment(Alignment::Center)
 			.style(Style::new().fg(app.theme.warning));
 
@@ -175,7 +177,7 @@ frame.render_widget(filename, filename_area);
 	} else {
 		let hint_area = Rect { x: input_area.x, y: input_area.y + input_area.height, width: input_area.width, height: 1 };
 
-		let hint = Paragraph::new("Enter the master password  [Esc] Quit")
+		let hint = Paragraph::new("Enter master password  [^c] Config  [Esc] Quit")
 			.alignment(Alignment::Center)
 			.style(Style::new().fg(app.theme.warning));
 
