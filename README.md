@@ -98,8 +98,8 @@ It will be installed in `~/.cargo/bin/` which will need to be added to `PATH`!
 default_database = "~/passwords.kdbx"
 keyfile = "~/passwords.keyx"
 ```
-* The interface requires a terminal dimensions of at least 44 colums by 23 rows (but 12 rows is still functional).
-* Run in smaller terminals with: `kptui slim` (at least 39 columns by 5 rows required, but 22 x 11 is still functional).
+* The interface requires a terminal dimensions of at least 44 colums by 24 rows (but 24x12 is still functional).
+* Run in smaller terminals with: `kptui slim` (at least 27 columns by 10 rows required, but 19x11 is still functional).
 * To show the version: `kptui version`
 * To show a short help: `kptui help`
 * A password can also be provided non-interactively:
