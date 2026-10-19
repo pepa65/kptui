@@ -146,7 +146,9 @@ fn commit_field(app: &mut App) {
 	}
 	if let Some(entry) = app.edit_entry.as_mut() {
 		match selected {
-			NAME_INDEX => entry.name = value,
+			NAME_INDEX => {
+				entry.name = if value.trim().is_empty() { String::new() } else { value };
+			}
 			USER_INDEX => entry.user = value,
 			PASSWORD_INDEX => entry.password = value,
 			URL_INDEX => entry.url = value,
