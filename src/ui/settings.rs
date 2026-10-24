@@ -140,7 +140,7 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 			.borders(Borders::ALL)
 			.padding(Padding::horizontal(1))
 			.border_style(border_style)
-			.title(" Configuration "),
+			.title(Span::styled(" Configuration ", Style::default().fg(app.theme.error))),
 	);
 
 	frame.render_stateful_widget(list, vertical[0], &mut app.settings_state);
@@ -206,9 +206,9 @@ fn draw_change_password(frame: &mut Frame, app: &mut App) {
 	app.max_len = (input_area.width - 2) as usize;
 
 	let title = match app.password_change_step {
-		crate::app::PasswordChangeStep::Current => " Current master password ",
-		crate::app::PasswordChangeStep::New => " New master password ",
-		crate::app::PasswordChangeStep::ConfirmNew => " Confirm new master password ",
+		crate::app::PasswordChangeStep::Current => Span::styled(" Current master password ", Style::default().fg(app.theme.error)),
+		crate::app::PasswordChangeStep::New => Span::styled(" New master password ", Style::default().fg(app.theme.error)),
+		crate::app::PasswordChangeStep::ConfirmNew => Span::styled(" Confirm new master password ", Style::default().fg(app.theme.error)),
 	};
 
 	let buf = match app.password_change_step {
@@ -267,13 +267,15 @@ fn draw_change_keyfile(frame: &mut Frame, app: &mut App) {
 
 	let (title, display, typed_len) = match app.keyfile_change_step {
 		crate::app::KeyfileChangeStep::Current => (
-			" Current master password ",
+			Span::styled(" Current master password ", Style::default().fg(app.theme.error)),
 			"•".repeat(app.current_password_buffer.chars().count()),
 			app.current_password_buffer.chars().count() as u16,
 		),
-		crate::app::KeyfileChangeStep::Path => {
-			(" New keyfile path (empty to remove) ", app.keyfile_path_buffer.clone(), app.keyfile_path_buffer.chars().count() as u16)
-		}
+		crate::app::KeyfileChangeStep::Path => (
+			Span::styled(" New keyfile path (empty to remove) ", Style::default().fg(app.theme.error)),
+			app.keyfile_path_buffer.clone(),
+			app.keyfile_path_buffer.chars().count() as u16,
+		),
 	};
 
 	let input = Paragraph::new(display)
@@ -328,8 +330,8 @@ fn draw_import(frame: &mut Frame, app: &mut App) {
 	let masked = matches!(app.import_step, crate::app::ImportStep::KdbxPassword);
 
 	let title = match app.import_step {
-		crate::app::ImportStep::Path => " Import from file (.kdbx/.csv/.json) ",
-		crate::app::ImportStep::KdbxPassword => " Password for that vault ",
+		crate::app::ImportStep::Path => Span::styled(" Import from file (.kdbx/.csv/.json) ", Style::default().fg(app.theme.error)),
+		crate::app::ImportStep::KdbxPassword => Span::styled(" Password for that vault ", Style::default().fg(app.theme.error)),
 	};
 
 	let buf = match app.import_step {
@@ -469,7 +471,13 @@ fn draw_theme_picker(frame: &mut Frame, app: &mut App) {
 		.collect();
 
 	let list = List::new(items)
-		.block(Block::default().borders(Borders::ALL).padding(Padding::horizontal(1)).border_style(border_style).title(" Theme "))
+		.block(
+			Block::default()
+				.borders(Borders::ALL)
+				.padding(Padding::horizontal(1))
+				.border_style(border_style)
+				.title(Span::styled(" Theme ", Style::default().fg(app.theme.error))),
+		)
 		.highlight_style(Style::new().fg(theme.selection_fg).bg(theme.selection_bg).bold());
 
 	frame.render_stateful_widget(list, vertical[0], &mut app.theme_state);

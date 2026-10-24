@@ -59,6 +59,6 @@ pub fn open_settings(app: &mut App) {
 		app.available_themes.iter().position(|name| crate::theme::slugify(name) == current)
 	});
 	let selected = current_idx.or(if app.available_themes.is_empty() { None } else { Some(0) });
-	app.settings_state.select(selected);
+	app.theme_state.select(selected);
 	app.screen = Settings;
 }

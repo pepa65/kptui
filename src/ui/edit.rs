@@ -126,7 +126,13 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) {
 		compact_field(LAST_MODIFIED_INDEX, "Modified", last_modified, vec![], true),
 	];
 	let title = if is_new_entry { " New Entry " } else { " Entry " };
-	let list = List::new(items).block(Block::default().borders(Borders::ALL).padding(Padding::horizontal(1)).border_style(border_style).title(title));
+	let list = List::new(items).block(
+		Block::default()
+			.borders(Borders::ALL)
+			.padding(Padding::horizontal(1))
+			.border_style(border_style)
+			.title(Span::styled(title, Style::default().fg(app.theme.error))),
+	);
 	let mut list_state = app.edit_state;
 	if selected == NOTES_INDEX {
 		list_state.select(None);

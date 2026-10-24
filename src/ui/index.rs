@@ -91,7 +91,8 @@ pub fn draw_index(frame: &mut Frame, app: &mut App) {
 		Block::default()
 			.borders(Borders::ALL)
 			.padding(Padding::horizontal(1))
-			.border_style(Style::default().fg(app.theme.border)),
+			.border_style(Style::default().fg(app.theme.border))
+			.title(Span::styled(" Index ", Style::default().fg(app.theme.error))),
 	);
 	frame.set_cursor_position((query_area.x + 2 + input_text.chars().count() as u16, query_area.y + 1));
 	frame.render_widget(input, query_area);
