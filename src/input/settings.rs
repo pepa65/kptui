@@ -2,6 +2,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use crossterm::event::{KeyCode, KeyEvent};
+use zeroize::Zeroize;
 
 use crate::app::{App, ExportStep, ImportStep, PasswordChangeStep, Screen};
 use crate::config::save_config;
@@ -174,9 +175,9 @@ fn parse_seconds(value: &str) -> Result<u64, String> {
 }
 
 fn start_change_password(app: &mut App) {
-	app.current_password_buffer.clear();
-	app.new_password_buffer.clear();
-	app.new_password_confirm.clear();
+	app.current_password_buffer.zeroize();
+	app.new_password_buffer.zeroize();
+	app.new_password_confirm.zeroize();
 	app.password_change_step = PasswordChangeStep::Current;
 	app.changing_password = true;
 	app.status = None;
@@ -185,9 +186,9 @@ fn start_change_password(app: &mut App) {
 fn cancel_change_password(app: &mut App) {
 	app.changing_password = false;
 	app.password_change_step = PasswordChangeStep::Current;
-	app.current_password_buffer.clear();
-	app.new_password_buffer.clear();
-	app.new_password_confirm.clear();
+	app.current_password_buffer.zeroize();
+	app.new_password_buffer.zeroize();
+	app.new_password_confirm.zeroize();
 	app.status = None;
 }
 
@@ -246,8 +247,12 @@ fn verify_current_password(app: &mut App) {
 	};
 
 	match unlock_database(&path, &app.current_password_buffer, app.config.keyfile.as_deref()) {
-		Ok(_) => {
-			app.current_password_buffer.clear();
+		Ok((db, key, entries)) => {
+			app.kdbx = Some(db);
+			app.db_key = Some(key);
+			app.entries = entries;
+
+			app.current_password_buffer.zeroize();
 			app.status = None;
 			app.password_change_step = PasswordChangeStep::New;
 		}
@@ -257,7 +262,7 @@ fn verify_current_password(app: &mut App) {
 			} else {
 				"Invalid current master password".to_string()
 			});
-			app.current_password_buffer.clear();
+			app.current_password_buffer.zeroize();
 		}
 	}
 }
@@ -265,7 +270,7 @@ fn verify_current_password(app: &mut App) {
 fn commit_password_change(app: &mut App) {
 	if app.new_password_confirm != app.new_password_buffer {
 		app.status = Some("passwords don't match".to_string());
-		app.new_password_confirm.clear();
+		app.new_password_confirm.zeroize();
 		app.password_change_step = PasswordChangeStep::New;
 		return;
 	}
@@ -274,8 +279,8 @@ fn commit_password_change(app: &mut App) {
 		Ok(key) => key,
 		Err(err) => {
 			app.status = Some(format!("couldn't change password: {err:#}"));
-			app.new_password_buffer.clear();
-			app.new_password_confirm.clear();
+			app.new_password_buffer.zeroize();
+			app.new_password_confirm.zeroize();
 			app.password_change_step = PasswordChangeStep::New;
 			return;
 		}
@@ -297,9 +302,9 @@ fn commit_password_change(app: &mut App) {
 
 	app.changing_password = false;
 	app.password_change_step = PasswordChangeStep::Current;
-	app.current_password_buffer.clear();
-	app.new_password_buffer.clear();
-	app.new_password_confirm.clear();
+	app.current_password_buffer.zeroize();
+	app.new_password_buffer.zeroize();
+	app.new_password_confirm.zeroize();
 }
 
 fn start_import(app: &mut App) {
@@ -312,7 +317,7 @@ fn reset_import_state(app: &mut App) {
 	app.importing_database = false;
 	app.import_step = ImportStep::Path;
 	app.import_path_buffer.clear();
-	app.import_kdbx_password_buffer.clear();
+	app.import_kdbx_password_buffer.zeroize();
 	app.pending_import_path = None;
 }
 
@@ -377,7 +382,7 @@ fn confirm_import_path(app: &mut App) {
 	match crate::import::detect_format(&path) {
 		Ok(crate::import::ImportFormat::Kdbx) => {
 			app.pending_import_path = Some(path);
-			app.import_kdbx_password_buffer.clear();
+			app.import_kdbx_password_buffer.zeroize();
 			app.import_step = ImportStep::KdbxPassword;
 			app.status = None;
 		}
@@ -406,7 +411,7 @@ fn confirm_import_kdbx_password(app: &mut App) {
 		Ok(entries) => finish_import(app, entries, &path),
 		Err(err) => {
 			app.status = Some(format!("{err:#}"));
-			app.import_kdbx_password_buffer.clear();
+			app.import_kdbx_password_buffer.zeroize();
 		}
 	}
 }

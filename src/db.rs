@@ -244,7 +244,7 @@ fn write_to_disk(path: &Path, key: &DatabaseKey, db: &mut Database) -> anyhow::R
 	let result = (|| {
 		db.save(&mut file, key.clone()).map_err(|err| anyhow::anyhow!("failed to write database: {err}"))?;
 		file.sync_all().with_context(|| format!("couldn't sync {}", tmp_path.display()))?;
-		fs::rename(&tmp_path, path).with_context(|| format!("couldn't replace {} with {}", path.display(), &tmp_path.display()))?;
+		fs::rename(&tmp_path, path).with_context(|| format!("couldn't replace {} with {}", path.display(), tmp_path.display()))?;
 		Ok(())
 	})();
 	if result.is_err() {
