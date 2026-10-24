@@ -34,6 +34,12 @@ pub enum Screen {
 }
 
 #[derive(PartialEq, Eq)]
+pub enum KeyfileChangeStep {
+	Current,
+	Path,
+}
+
+#[derive(PartialEq, Eq)]
 pub enum PasswordChangeStep {
 	Current,
 	New,
@@ -56,6 +62,9 @@ pub struct App {
 	pub screen: Screen,
 	pub login_settings: bool,
 	pub password: Zeroizing<String>,
+	pub changing_keyfile: bool,
+	pub keyfile_change_step: KeyfileChangeStep,
+	pub keyfile_path_buffer: String,
 	pub query: Zeroizing<String>,
 	pub max_len: usize,
 	pub index_state: TableState,
@@ -170,6 +179,9 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 		screen: Screen::Login,
 		login_settings: false,
 		password,
+		changing_keyfile: false,
+		keyfile_change_step: KeyfileChangeStep::Current,
+		keyfile_path_buffer: String::new(),
 		query: Zeroizing::new(String::new()),
 		max_len: 0,
 		theme,

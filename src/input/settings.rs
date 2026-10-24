@@ -4,7 +4,7 @@ use std::time::Duration;
 use crossterm::event::{KeyCode, KeyEvent};
 use zeroize::Zeroize;
 
-use crate::app::{App, ExportStep, ImportStep, PasswordChangeStep, Screen};
+use crate::app::{App, ExportStep, ImportStep, KeyfileChangeStep, PasswordChangeStep, Screen};
 use crate::config::save_config;
 use crate::db::{Entry, build_database_key, save_database, unlock_database};
 use crate::input::fieldedit::{EditAction, FieldEditor};
@@ -13,6 +13,7 @@ use crate::theme::load_theme;
 use crate::util::expand_tilde;
 
 pub const ROW_COUNT: usize = 7;
+pub const CONFIG_ROW_COUNT: usize = 4;
 
 pub const DATABASE_ROW: usize = 0;
 pub const KEYFILE_ROW: usize = 1;
@@ -22,6 +23,10 @@ pub const CHANGE_PASSWORD_ROW: usize = 4;
 pub const IMPORT_ROW: usize = 5;
 pub const EXPORT_ROW: usize = 6;
 
+fn visible_row_count(app: &App) -> usize {
+	if app.login_settings { CONFIG_ROW_COUNT } else { ROW_COUNT }
+}
+
 pub fn handle_settings_input(app: &mut App, key: KeyEvent) {
 	if app.exporting_database {
 		handle_export_input(app, key);
@@ -30,6 +35,11 @@ pub fn handle_settings_input(app: &mut App, key: KeyEvent) {
 
 	if app.importing_database {
 		handle_import_input(app, key.code);
+		return;
+	}
+
+	if app.changing_keyfile {
+		handle_change_keyfile_input(app, key.code);
 		return;
 	}
 
@@ -51,15 +61,17 @@ pub fn handle_settings_input(app: &mut App, key: KeyEvent) {
 	match key.code {
 		KeyCode::Down => {
 			app.status = None;
+			let count = visible_row_count(app);
 			let selected = app.settings_state.selected().unwrap_or(0);
-			let next = if selected + 1 >= ROW_COUNT { 0 } else { selected + 1 };
+			let next = if selected + 1 >= count { 0 } else { selected + 1 };
 			app.settings_state.select(Some(next));
 		}
 
 		KeyCode::Up => {
 			app.status = None;
+			let count = visible_row_count(app);
 			let selected = app.settings_state.selected().unwrap_or(0);
-			let prev = if selected == 0 { ROW_COUNT - 1 } else { selected - 1 };
+			let prev = if selected == 0 { count - 1 } else { selected - 1 };
 			app.settings_state.select(Some(prev));
 		}
 
@@ -67,9 +79,13 @@ pub fn handle_settings_input(app: &mut App, key: KeyEvent) {
 
 		KeyCode::Esc => {
 			app.status = None;
-			app.screen = Screen::Index;
 			if app.login_settings {
-				app.should_quit = true;
+				// Return to Login without exiting the application.
+				app.screen = Screen::Login;
+				app.login_settings = false;
+				app.settings_state.select(Some(0));
+			} else {
+				app.screen = Screen::Index;
 			}
 		}
 
@@ -82,9 +98,20 @@ fn activate_selected(app: &mut App) {
 		return;
 	};
 
+	// Login settings must never expose authenticated database operations.
+	if app.login_settings && selected >= CHANGE_PASSWORD_ROW {
+		return;
+	}
+
 	match selected {
 		DATABASE_ROW => start_editing_database(app),
-		KEYFILE_ROW => start_editing_keyfile(app),
+		KEYFILE_ROW => {
+			if app.login_settings {
+				start_editing_keyfile_config(app);
+			} else {
+				start_change_keyfile(app);
+			}
+		}
 		AUTO_EXIT_ROW => start_editing_auto_exit(app),
 		THEME_ROW => start_choosing_theme(app),
 		CHANGE_PASSWORD_ROW => start_change_password(app),
@@ -102,12 +129,125 @@ fn start_editing_database(app: &mut App) {
 	app.status = None;
 }
 
-fn start_editing_keyfile(app: &mut App) {
+fn start_editing_keyfile_config(app: &mut App) {
 	let value = app.config.keyfile.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
 
 	app.field_editor = Some(FieldEditor::with_text(value));
 	app.editing_field = true;
 	app.status = None;
+}
+
+fn start_change_keyfile(app: &mut App) {
+	app.keyfile_path_buffer.clear();
+	app.current_password_buffer.zeroize();
+	app.keyfile_change_step = KeyfileChangeStep::Current;
+	app.changing_keyfile = true;
+	app.status = None;
+}
+
+fn cancel_change_keyfile(app: &mut App) {
+	app.changing_keyfile = false;
+	app.keyfile_change_step = KeyfileChangeStep::Current;
+	app.current_password_buffer.zeroize();
+	app.keyfile_path_buffer.clear();
+	app.status = None;
+}
+
+fn handle_change_keyfile_input(app: &mut App, key: KeyCode) {
+	match key {
+		KeyCode::Char(c) => {
+			app.status = None;
+			let limit = app.max_len.max(1);
+
+			match app.keyfile_change_step {
+				KeyfileChangeStep::Current => {
+					if app.current_password_buffer.len() < limit {
+						app.current_password_buffer.push(c);
+					}
+				}
+				KeyfileChangeStep::Path => {
+					if app.keyfile_path_buffer.len() < limit {
+						app.keyfile_path_buffer.push(c);
+					}
+				}
+			}
+		}
+		KeyCode::Backspace => {
+			app.status = None;
+			match app.keyfile_change_step {
+				KeyfileChangeStep::Current => {
+					secret_pop(&mut app.current_password_buffer);
+				}
+				KeyfileChangeStep::Path => {
+					secret_pop(&mut app.keyfile_path_buffer);
+				}
+			}
+		}
+		KeyCode::Enter => match app.keyfile_change_step {
+			KeyfileChangeStep::Current => verify_keyfile_change_password(app),
+			KeyfileChangeStep::Path => commit_keyfile_change(app),
+		},
+		KeyCode::Esc => cancel_change_keyfile(app),
+		_ => {}
+	}
+}
+
+fn verify_keyfile_change_password(app: &mut App) {
+	let Some(path) = app.config.default_database.clone() else {
+		app.status = Some("no database configured".to_string());
+		cancel_change_keyfile(app);
+		return;
+	};
+
+	match unlock_database(&path, &app.current_password_buffer, app.config.keyfile.as_deref()) {
+		Ok((db, key, entries)) => {
+			app.kdbx = Some(db);
+			app.db_key = Some(key);
+			app.entries = entries;
+			app.keyfile_change_step = KeyfileChangeStep::Path;
+			app.status = None;
+		}
+		Err(err) => {
+			app.current_password_buffer.zeroize();
+			app.status = Some(if app.config.keyfile.is_some() {
+				format!("couldn't verify current password and keyfile: {err}")
+			} else {
+				"Invalid current master password".to_string()
+			});
+		}
+	}
+}
+
+fn commit_keyfile_change(app: &mut App) {
+	let raw = app.keyfile_path_buffer.trim();
+	let new_keyfile = if raw.is_empty() { None } else { Some(expand_tilde(raw)) };
+
+	if let Some(path) = new_keyfile.as_ref()
+		&& !path.is_file()
+	{
+		app.status = Some(format!("no keyfile found at {}", path.display()));
+		return;
+	}
+
+	let password = zeroize::Zeroizing::new(app.current_password_buffer.to_string());
+
+	let result = rotate_database_credentials(app, &password, new_keyfile.as_deref());
+
+	match result {
+		Ok(()) => {
+			app.config.keyfile = new_keyfile;
+			app.status = Some(match save_config(&app.config) {
+				Ok(()) => "keyfile changed".to_string(),
+				Err(err) => format!("database credentials changed, but couldn't save config: {err}"),
+			});
+			app.changing_keyfile = false;
+			app.keyfile_path_buffer.clear();
+			app.current_password_buffer.zeroize();
+		}
+		Err(err) => {
+			app.status = Some(format!("couldn't change keyfile: {err:#}"));
+		}
+	}
 }
 
 fn start_editing_auto_exit(app: &mut App) {
@@ -150,9 +290,30 @@ fn commit_field(app: &mut App) {
 		}
 
 		KEYFILE_ROW => {
-			app.config.keyfile = if value.trim().is_empty() { None } else { Some(expand_tilde(value.trim())) };
-		}
+			let raw = value.trim();
 
+			let keyfile = if raw.is_empty() {
+				None
+			} else {
+				let path = expand_tilde(raw);
+
+				if !path.is_file() {
+					app.status = Some(format!("no keyfile found at {}", path.display()));
+					return;
+				}
+
+				Some(path)
+			};
+
+			app.config.keyfile = keyfile;
+
+			app.status = Some(match save_config(&app.config) {
+				Ok(()) => "keyfile configuration saved".to_string(),
+				Err(err) => format!("couldn't save config: {err}"),
+			});
+
+			return;
+		}
 		AUTO_EXIT_ROW => match parse_seconds(&value) {
 			Ok(secs) => app.config.auto_exit = Duration::from_secs(secs),
 			Err(err) => {
@@ -267,6 +428,15 @@ fn verify_current_password(app: &mut App) {
 	}
 }
 
+fn rotate_database_credentials(app: &mut App, new_password: &zeroize::Zeroizing<String>, new_keyfile: Option<&Path>) -> anyhow::Result<()> {
+	let path = app.config.default_database.clone().ok_or_else(|| anyhow::anyhow!("no database configured"))?;
+	let new_key = build_database_key(new_password, new_keyfile)?;
+	let db = app.kdbx.as_mut().ok_or_else(|| anyhow::anyhow!("no unlocked database"))?;
+	save_database(&path, &new_key, db, &mut app.entries)?;
+	app.db_key = Some(new_key);
+	Ok(())
+}
+
 fn commit_password_change(app: &mut App) {
 	if app.new_password_confirm != app.new_password_buffer {
 		app.status = Some("passwords don't match".to_string());
@@ -275,28 +445,11 @@ fn commit_password_change(app: &mut App) {
 		return;
 	}
 
-	let new_key = match build_database_key(&app.new_password_buffer, app.config.keyfile.as_deref()) {
-		Ok(key) => key,
-		Err(err) => {
-			app.status = Some(format!("couldn't change password: {err:#}"));
-			app.new_password_buffer.zeroize();
-			app.new_password_confirm.zeroize();
-			app.password_change_step = PasswordChangeStep::New;
-			return;
-		}
-	};
-
-	let (Some(path), Some(db)) = (app.config.default_database.clone(), app.kdbx.as_mut()) else {
-		app.status = Some("no unlocked database".to_string());
-		cancel_change_password(app);
-		return;
-	};
-
-	app.status = Some(match save_database(&path, &new_key, db, &mut app.entries) {
-		Ok(()) => {
-			app.db_key = Some(new_key);
-			"master password changed".to_string()
-		}
+	let new_password = zeroize::Zeroizing::new(app.new_password_buffer.clone());
+	let keyfile = app.config.keyfile.clone();
+	let result = rotate_database_credentials(app, &new_password, keyfile.as_deref());
+	app.status = Some(match result {
+		Ok(()) => "master password changed".to_string(),
 		Err(err) => format!("couldn't change password: {err:#}"),
 	});
 

@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use crate::app::App;
-use crate::input::settings::{AUTO_EXIT_ROW, DATABASE_ROW, KEYFILE_ROW, THEME_ROW};
+use crate::input::settings::{AUTO_EXIT_ROW, CHANGE_PASSWORD_ROW, DATABASE_ROW, EXPORT_ROW, IMPORT_ROW, KEYFILE_ROW, THEME_ROW};
 use crate::util::wrap_help_items;
 
 fn centered_cursor_x(input_area: Rect, typed_len: u16) -> u16 {
@@ -40,6 +40,8 @@ pub fn draw_settings(frame: &mut Frame, app: &mut App) {
 		draw_export(frame, app);
 	} else if app.importing_database {
 		draw_import(frame, app);
+	} else if app.changing_keyfile {
+		draw_change_keyfile(frame, app);
 	} else if app.changing_password {
 		draw_change_password(frame, app);
 	} else if app.choosing_theme {
@@ -102,7 +104,7 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 		}
 	};
 
-	let items = vec![
+	let mut items = vec![
 		field(DATABASE_ROW, "Default database", database_value),
 		field(KEYFILE_ROW, "Keyfile (optional)", keyfile_value),
 		field(AUTO_EXIT_ROW, "Auto-exit (seconds)", auto_exit_value),
@@ -111,22 +113,27 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 			theme_value,
 			Line::from(""),
 		]),
-		ListItem::new(vec![
-			Line::from(Span::styled("Change master password", if selected == 4 { editing_style } else { label_style })),
-			Line::from(Span::styled("[Enter] Change", placeholder)),
-			Line::from(""),
-		]),
-		ListItem::new(vec![
-			Line::from(Span::styled("Import database", if selected == 5 { editing_style } else { label_style })),
-			Line::from(Span::styled("[Enter] Import", placeholder)),
-			Line::from(""),
-		]),
-		ListItem::new(vec![
-			Line::from(Span::styled("Export database", if selected == 6 { editing_style } else { label_style })),
-			Line::from(Span::styled("[Enter] Export", placeholder)),
-			Line::from(""),
-		]),
 	];
+
+	if !app.login_settings {
+		items.extend([
+			ListItem::new(vec![
+				Line::from(Span::styled("Change master password", if selected == CHANGE_PASSWORD_ROW { editing_style } else { label_style })),
+				Line::from(Span::styled("[Enter] Change", placeholder)),
+				Line::from(""),
+			]),
+			ListItem::new(vec![
+				Line::from(Span::styled("Import database", if selected == IMPORT_ROW { editing_style } else { label_style })),
+				Line::from(Span::styled("[Enter] Import", placeholder)),
+				Line::from(""),
+			]),
+			ListItem::new(vec![
+				Line::from(Span::styled("Export database", if selected == EXPORT_ROW { editing_style } else { label_style })),
+				Line::from(Span::styled("[Enter] Export", placeholder)),
+				Line::from(""),
+			]),
+		]);
+	}
 
 	let list = List::new(items).block(
 		Block::default()
@@ -235,6 +242,64 @@ fn draw_change_password(frame: &mut Frame, app: &mut App) {
 
 	let accent = Style::new().fg(app.theme.accent);
 	let help_text = help_lines.iter().map(|line| format!("  {line}")).collect::<Vec<_>>().join("\n");
+	frame.render_widget(Paragraph::new(help_text).style(accent), vertical[3]);
+}
+
+fn draw_change_keyfile(frame: &mut Frame, app: &mut App) {
+	let full_area = frame.area();
+
+	let help_width = full_area.width.saturating_sub(2);
+	let help_lines = wrap_help_items(change_password_help_items(app.slim_mode), help_width);
+	let help_height = help_lines.len() as u16;
+
+	let vertical = Layout::default()
+		.direction(Direction::Vertical)
+		.constraints([Constraint::Fill(1), Constraint::Length(3), Constraint::Fill(1), Constraint::Length(help_height)])
+		.split(full_area);
+
+	let horizontal = Layout::default()
+		.direction(Direction::Horizontal)
+		.constraints([Constraint::Fill(1), Constraint::Length(60), Constraint::Fill(1)])
+		.split(vertical[1]);
+
+	let input_area = horizontal[1];
+	app.max_len = (input_area.width - 2) as usize;
+
+	let (title, display, typed_len) = match app.keyfile_change_step {
+		crate::app::KeyfileChangeStep::Current => (
+			" Current master password ",
+			"•".repeat(app.current_password_buffer.chars().count()),
+			app.current_password_buffer.chars().count() as u16,
+		),
+		crate::app::KeyfileChangeStep::Path => {
+			(" New keyfile path (empty to remove) ", app.keyfile_path_buffer.clone(), app.keyfile_path_buffer.chars().count() as u16)
+		}
+	};
+
+	let input = Paragraph::new(display)
+		.alignment(Alignment::Center)
+		.block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(app.theme.border)).title(title));
+
+	frame.render_widget(input, input_area);
+
+	let hint_area = Rect { x: input_area.x, y: input_area.y + input_area.height, width: input_area.width, height: 1 };
+
+	let default_hint = match app.keyfile_change_step {
+		crate::app::KeyfileChangeStep::Current => "verify current master password using the current keyfile",
+		crate::app::KeyfileChangeStep::Path => "re-encrypts the vault with the new keyfile",
+	};
+
+	let hint_text = app.status.clone().unwrap_or_else(|| default_hint.to_string());
+	let hint_style = if app.status.is_some() { Style::new().fg(app.theme.error) } else { Style::new().fg(app.theme.warning) };
+
+	frame.render_widget(Paragraph::new(hint_text).alignment(Alignment::Center).style(hint_style), hint_area);
+
+	let cursor_x = centered_cursor_x(input_area, typed_len);
+	frame.set_cursor_position((cursor_x, input_area.y + 1));
+
+	let accent = Style::new().fg(app.theme.accent);
+	let help_text = help_lines.iter().map(|line| format!("  {line}")).collect::<Vec<_>>().join("\n");
+
 	frame.render_widget(Paragraph::new(help_text).style(accent), vertical[3]);
 }
 

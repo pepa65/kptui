@@ -32,6 +32,7 @@ impl Default for Config {
 
 #[derive(Deserialize, Default)]
 struct ConfigFile {
+	database: Option<String>,
 	default_database: Option<String>,
 	keyfile: Option<String>,
 	auto_exit: Option<u64>,
@@ -69,12 +70,10 @@ pub fn load_config() -> anyhow::Result<Config> {
 
 fn parse_config(text: &str) -> anyhow::Result<Config> {
 	let raw: ConfigFile = toml::from_str(text)?;
-
 	let defaults = Config::default();
-
 	Ok(Config {
-		default_database: raw.default_database.map(|s| expand_tilde(&s)),
-		keyfile: raw.keyfile.map(|s| expand_tilde(&s)),
+		default_database: raw.database.or(raw.default_database).map(|s| expand_tilde(&s)),
+		keyfile: raw.keyfile.filter(|s| !s.is_empty()).map(|s| expand_tilde(&s)),
 		auto_exit: raw.auto_exit.map(Duration::from_secs).unwrap_or(defaults.auto_exit),
 		theme: raw.theme,
 	})
@@ -82,8 +81,8 @@ fn parse_config(text: &str) -> anyhow::Result<Config> {
 
 #[derive(Serialize)]
 struct ConfigFileOut<'a> {
-	default_database: Option<String>,
-	keyfile: Option<String>,
+	database: Option<String>,
+	keyfile: String,
 	auto_exit: u64,
 	theme: Option<&'a str>,
 }
@@ -124,8 +123,8 @@ pub fn save_config(config: &Config) -> anyhow::Result<()> {
 
 fn serialize_config(config: &Config) -> anyhow::Result<String> {
 	let out = ConfigFileOut {
-		default_database: config.default_database.as_ref().map(|p| p.display().to_string()),
-		keyfile: config.keyfile.as_ref().map(|p| p.display().to_string()),
+		database: config.default_database.as_ref().map(|p| p.display().to_string()),
+		keyfile: config.keyfile.as_ref().map(|p| p.display().to_string()).unwrap_or_default(),
 		auto_exit: config.auto_exit.as_secs(),
 		theme: config.theme.as_deref(),
 	};
@@ -142,7 +141,7 @@ mod tests {
 	fn parses_optional_keyfile_path() {
 		let config = parse_config(
 			r#"
-                default_database = "/tmp/passwords.kdbx"
+                database = "/tmp/passwords.kdbx"
                 keyfile = "/tmp/passwords.keyx"
             "#,
 		)
@@ -154,12 +153,25 @@ mod tests {
 
 	#[test]
 	fn keyfile_remains_optional() {
-		let config = parse_config("default_database = \"/tmp/passwords.kdbx\"").expect("config should parse");
+		let config = parse_config("database = \"/tmp/passwords.kdbx\"").expect("config should parse");
 
 		assert_eq!(config.keyfile, None);
 
 		let text = serialize_config(&config).expect("config should serialize");
-		assert!(!text.contains("keyfile"));
+		assert!(text.contains("keyfile = \"\""));
+	}
+
+	#[test]
+	fn empty_keyfile_means_no_keyfile() {
+		let config = parse_config(
+			r#"
+            database = "/tmp/passwords.kdbx"
+            keyfile = ""
+        "#,
+		)
+		.expect("config should parse");
+
+		assert_eq!(config.keyfile, None);
 	}
 
 	#[test]
@@ -168,5 +180,26 @@ mod tests {
 
 		let text = serialize_config(&config).expect("config should serialize");
 		assert!(text.contains("keyfile = \"/tmp/passwords.keyx\""));
+		assert!(!text.contains("database = "));
+	}
+
+	#[test]
+	fn parses_legacy_default_database_key() {
+		let config = parse_config(r#"default_database = "/tmp/passwords.kdbx""#).expect("legacy config should parse");
+
+		assert_eq!(config.default_database, Some(PathBuf::from("/tmp/passwords.kdbx")));
+	}
+
+	#[test]
+	fn database_key_takes_precedence_over_legacy_key() {
+		let config = parse_config(
+			r#"
+            database = "/tmp/new.kdbx"
+            default_database = "/tmp/old.kdbx"
+        "#,
+		)
+		.expect("config should parse");
+
+		assert_eq!(config.default_database, Some(PathBuf::from("/tmp/new.kdbx")));
 	}
 }

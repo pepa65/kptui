@@ -1,8 +1,8 @@
 # Existing KDBX database to open
-default_database = "~/.local/share/kptui/default.kdbx"
+database = "~/.local/share/kptui/default.kdbx"
 
-# Optional KeePass keyfile (leave unset for password-only vaults)
-#keyfile = "~/.local/share/kptui/default.keyx"
+# Optional KeePass keyfile (leave empty for password-only vaults)
+keyfile = "~/.local/share/kptui/default.keyx"
 
 # Seconds of inactivity before exiting the app (0: never auto-exit)
 auto_exit = 300
