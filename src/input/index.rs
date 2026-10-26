@@ -71,6 +71,9 @@ pub fn handle_index_input(app: &mut App, key: KeyEvent) {
 				{
 					start_delete_confirmation(app, index);
 				}
+			} else if c.eq_ignore_ascii_case(&'s') {
+				app.search_notes = !app.search_notes;
+				app.refresh_filter();
 			} else {
 				handle_shortcut(app, c.to_ascii_lowercase());
 			}

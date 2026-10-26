@@ -12,16 +12,17 @@ use crate::input::secret_pop;
 use crate::theme::load_theme;
 use crate::util::expand_tilde;
 
-pub const ROW_COUNT: usize = 7;
-pub const CONFIG_ROW_COUNT: usize = 4;
+pub const ROW_COUNT: usize = 8;
+pub const CONFIG_ROW_COUNT: usize = 5;
 
 pub const DATABASE_ROW: usize = 0;
 pub const KEYFILE_ROW: usize = 1;
-pub const AUTO_EXIT_ROW: usize = 2;
-pub const THEME_ROW: usize = 3;
-pub const CHANGE_PASSWORD_ROW: usize = 4;
-pub const IMPORT_ROW: usize = 5;
-pub const EXPORT_ROW: usize = 6;
+pub const ITERATIONS_ROW: usize = 2;
+pub const AUTO_EXIT_ROW: usize = 3;
+pub const THEME_ROW: usize = 4;
+pub const CHANGE_PASSWORD_ROW: usize = 5;
+pub const IMPORT_ROW: usize = 6;
+pub const EXPORT_ROW: usize = 7;
 
 fn visible_row_count(app: &App) -> usize {
 	if app.login_settings { CONFIG_ROW_COUNT } else { ROW_COUNT }
@@ -112,6 +113,7 @@ fn activate_selected(app: &mut App) {
 				start_change_keyfile(app);
 			}
 		}
+		ITERATIONS_ROW => start_editing_kdf_iterations(app),
 		AUTO_EXIT_ROW => start_editing_auto_exit(app),
 		THEME_ROW => start_choosing_theme(app),
 		CHANGE_PASSWORD_ROW => start_change_password(app),
@@ -250,6 +252,28 @@ fn commit_keyfile_change(app: &mut App) {
 	}
 }
 
+fn start_editing_kdf_iterations(app: &mut App) {
+	app.field_editor = Some(FieldEditor::with_text(app.config.kdf_iterations.to_string()));
+	app.editing_field = true;
+	app.status = None;
+}
+
+fn change_kdf_iterations(app: &mut App, new_iterations: u64) -> anyhow::Result<()> {
+	let path = app.config.default_database.clone().ok_or_else(|| anyhow::anyhow!("no database configured"))?;
+
+	let key = app.db_key.clone().ok_or_else(|| anyhow::anyhow!("no unlocked database"))?;
+
+	let db = app.kdbx.as_mut().ok_or_else(|| anyhow::anyhow!("no unlocked database"))?;
+
+	if let keepass::config::KdfConfig::Argon2 { ref mut iterations, .. } = db.config.kdf_config {
+		*iterations = new_iterations;
+	} else {
+		anyhow::bail!("database does not use Argon2");
+	}
+	save_database(&path, &key, db, &mut app.entries)?;
+	Ok(())
+}
+
 fn start_editing_auto_exit(app: &mut App) {
 	app.field_editor = Some(FieldEditor::with_text(app.config.auto_exit.as_secs().to_string()));
 	app.editing_field = true;
@@ -264,11 +288,9 @@ fn handle_field_input(app: &mut App, key: KeyEvent) {
 
 	match editor.handle_key(key) {
 		EditAction::Continue => {}
-
 		EditAction::Accept => {
 			commit_field(app);
 		}
-
 		EditAction::Cancel => {
 			app.editing_field = false;
 			app.field_editor = None;
@@ -279,11 +301,8 @@ fn handle_field_input(app: &mut App, key: KeyEvent) {
 
 fn commit_field(app: &mut App) {
 	let selected = app.settings_state.selected().unwrap_or(0);
-
 	let value = app.field_editor.take().map(FieldEditor::into_text).unwrap_or_default();
-
 	app.editing_field = false;
-
 	match selected {
 		DATABASE_ROW => {
 			app.config.default_database = if value.trim().is_empty() { None } else { Some(expand_tilde(value.trim())) };
@@ -291,12 +310,10 @@ fn commit_field(app: &mut App) {
 
 		KEYFILE_ROW => {
 			let raw = value.trim();
-
 			let keyfile = if raw.is_empty() {
 				None
 			} else {
 				let path = expand_tilde(raw);
-
 				if !path.is_file() {
 					app.status = Some(format!("no keyfile found at {}", path.display()));
 					return;
@@ -304,16 +321,35 @@ fn commit_field(app: &mut App) {
 
 				Some(path)
 			};
-
 			app.config.keyfile = keyfile;
-
 			app.status = Some(match save_config(&app.config) {
 				Ok(()) => "keyfile configuration saved".to_string(),
 				Err(err) => format!("couldn't save config: {err}"),
 			});
-
 			return;
 		}
+
+		ITERATIONS_ROW => {
+			let iterations = match parse_kdf_iterations(&value) {
+				Ok(iterations) => iterations,
+				Err(err) => {
+					app.status = Some(err);
+					return;
+				}
+			};
+
+			if iterations != app.config.kdf_iterations {
+				if app.kdbx.is_some() {
+					if let Err(err) = change_kdf_iterations(app, iterations) {
+						app.status = Some(format!("couldn't change KDF iterations: {err:#}"));
+						return;
+					}
+				}
+
+				app.config.kdf_iterations = iterations;
+			}
+		}
+
 		AUTO_EXIT_ROW => match parse_seconds(&value) {
 			Ok(secs) => app.config.auto_exit = Duration::from_secs(secs),
 			Err(err) => {
@@ -329,6 +365,16 @@ fn commit_field(app: &mut App) {
 		Ok(()) => "saved".to_string(),
 		Err(err) => format!("couldn't save config: {err}"),
 	});
+}
+
+fn parse_kdf_iterations(value: &str) -> Result<u64, String> {
+	let iterations = value.trim().parse::<u64>().map_err(|_| format!("\"{}\" isn't a whole number", value.trim()))?;
+
+	if iterations == 0 {
+		return Err("KDF iterations must be greater than zero".to_string());
+	}
+
+	Ok(iterations)
 }
 
 fn parse_seconds(value: &str) -> Result<u64, String> {
@@ -796,10 +842,12 @@ fn apply_selected_theme(app: &mut App) {
 fn settings_rows_are_contiguous() {
 	assert_eq!(DATABASE_ROW, 0);
 	assert_eq!(KEYFILE_ROW, 1);
-	assert_eq!(AUTO_EXIT_ROW, 2);
-	assert_eq!(THEME_ROW, 3);
-	assert_eq!(CHANGE_PASSWORD_ROW, 4);
-	assert_eq!(IMPORT_ROW, 5);
-	assert_eq!(EXPORT_ROW, 6);
-	assert_eq!(ROW_COUNT, 7);
+	assert_eq!(ITERATIONS_ROW, 2);
+	assert_eq!(AUTO_EXIT_ROW, 3);
+	assert_eq!(THEME_ROW, 4);
+	assert_eq!(CHANGE_PASSWORD_ROW, 5);
+	assert_eq!(IMPORT_ROW, 6);
+	assert_eq!(EXPORT_ROW, 7);
+	assert_eq!(ROW_COUNT, 8);
+	assert_eq!(CONFIG_ROW_COUNT, 5);
 }

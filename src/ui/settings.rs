@@ -7,7 +7,9 @@ use ratatui::{
 };
 
 use crate::app::App;
-use crate::input::settings::{AUTO_EXIT_ROW, CHANGE_PASSWORD_ROW, DATABASE_ROW, EXPORT_ROW, IMPORT_ROW, KEYFILE_ROW, THEME_ROW};
+use crate::input::settings::{
+	AUTO_EXIT_ROW, CHANGE_PASSWORD_ROW, CONFIG_ROW_COUNT, DATABASE_ROW, EXPORT_ROW, IMPORT_ROW, ITERATIONS_ROW, KEYFILE_ROW, THEME_ROW,
+};
 use crate::util::wrap_help_items;
 
 fn centered_cursor_x(input_area: Rect, typed_len: u16) -> u16 {
@@ -76,25 +78,19 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 	let placeholder = Style::new().fg(theme.text).bold();
 	let editing_style = Style::new().fg(theme.selection_fg).bg(theme.selection_bg);
 	let label_style = Style::new().fg(theme.header).bold();
-
 	let field = |field_index: usize, label: &'static str, value: String| -> ListItem<'static> {
 		let current_label_style = if selected == field_index { editing_style } else { label_style };
-
 		let value_line = if value.is_empty() {
 			Line::from(Span::styled("(not set)", placeholder))
 		} else {
 			Line::from(Span::styled(value, normal))
 		};
-
 		ListItem::new(vec![Line::from(Span::styled(label, current_label_style)), value_line, Line::from("")])
 	};
-
 	let database_value = app.config.default_database.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
-
 	let keyfile_value = app.config.keyfile.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
-
+	let iterations_value = app.config.kdf_iterations.to_string();
 	let auto_exit_value = if app.config.auto_exit.is_zero() { "0 (never)".to_string() } else { app.config.auto_exit.as_secs().to_string() };
-
 	let theme_value = if app.available_themes.is_empty() {
 		Line::from(Span::styled("no themes found in ~/.config/kptui/themes", warning))
 	} else {
@@ -103,10 +99,10 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 			None => Line::from(Span::styled("(not set)", placeholder)),
 		}
 	};
-
 	let mut items = vec![
 		field(DATABASE_ROW, "Default database", database_value),
 		field(KEYFILE_ROW, "Keyfile (optional)", keyfile_value),
+		field(ITERATIONS_ROW, "KDF iterations", iterations_value),
 		field(AUTO_EXIT_ROW, "Auto-exit (seconds)", auto_exit_value),
 		ListItem::new(vec![
 			Line::from(Span::styled("Theme", if selected == THEME_ROW { editing_style } else { label_style })),
@@ -114,7 +110,6 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 			Line::from(""),
 		]),
 	];
-
 	if !app.login_settings {
 		items.extend([
 			ListItem::new(vec![
@@ -147,7 +142,7 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 
 	// Overlay the FieldEditor on the selected editable setting.
 	if editing_field
-		&& selected < 3
+		&& selected <= CONFIG_ROW_COUNT
 		&& let Some(editor) = app.field_editor.as_ref()
 	{
 		let list_area = vertical[0];

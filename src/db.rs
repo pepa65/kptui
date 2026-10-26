@@ -188,7 +188,9 @@ pub fn unlock_database(path: &Path, password: &Zeroizing<String>, keyfile_path: 
 	Ok((db, key, entries))
 }
 
-pub fn create_database(path: &Path, password: &Zeroizing<String>, keyfile_path: Option<&Path>) -> anyhow::Result<(Database, DatabaseKey, Vec<Entry>)> {
+pub fn create_database(
+	path: &Path, kdf_iterations: u64, password: &Zeroizing<String>, keyfile_path: Option<&Path>,
+) -> anyhow::Result<(Database, DatabaseKey, Vec<Entry>)> {
 	if path.exists() {
 		anyhow::bail!("a file already exists at {}", path.display());
 	}
@@ -198,7 +200,7 @@ pub fn create_database(path: &Path, password: &Zeroizing<String>, keyfile_path: 
 	}
 	let mut db = Database::new();
 	if let keepass::config::KdfConfig::Argon2 { ref mut iterations, ref mut memory, .. } = db.config.kdf_config {
-		*iterations = 90;
+		*iterations = kdf_iterations;
 		*memory = 262144;
 	}
 	let key = build_database_key(password, keyfile_path)?;
@@ -220,6 +222,21 @@ pub fn build_database_key(password: &Zeroizing<String>, keyfile_path: Option<&Pa
 	}
 
 	Ok(key)
+}
+
+pub fn reconcile_kdf_iterations(path: &Path, key: &DatabaseKey, db: &mut Database, entries: &mut [Entry], configured_iterations: u64) -> anyhow::Result<bool> {
+	let iterations = match &mut db.config.kdf_config {
+		keepass::config::KdfConfig::Argon2 { iterations, .. } => iterations,
+		_ => anyhow::bail!("database does not use Argon2"),
+	};
+
+	if *iterations == configured_iterations {
+		return Ok(false);
+	}
+
+	*iterations = configured_iterations;
+	save_database(path, key, db, entries)?;
+	Ok(true)
 }
 
 pub fn save_database(path: &Path, key: &DatabaseKey, db: &mut Database, entries: &mut [Entry]) -> anyhow::Result<()> {
@@ -296,7 +313,7 @@ fn sibling_tmp_path(path: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-	use super::{build_database_key, create_database, save_database, unlock_database};
+	use super::{build_database_key, create_database, reconcile_kdf_iterations, save_database, unlock_database};
 	use keepass::db::fields;
 	use std::fs;
 	use std::path::{Path, PathBuf};
@@ -340,8 +357,7 @@ mod tests {
 	fn password_only_databases_still_unlock() {
 		let dir = TestDir::new();
 		let database_path = dir.join("password-only.kdbx");
-
-		create_database(&database_path, &Zeroizing::new("correct horse".to_string()), None).expect("password-only database should be created");
+		create_database(&database_path, 10, &Zeroizing::new("correct horse".to_string()), None).expect("password-only database should be created");
 		unlock_database(&database_path, &Zeroizing::new("correct horse".to_string()), None).expect("password-only database should unlock");
 	}
 
@@ -350,7 +366,7 @@ mod tests {
 		let dir = TestDir::new();
 		let database_path = dir.join("notes.kdbx");
 		let (mut database, key, mut entries) =
-			create_database(&database_path, &Zeroizing::new("correct horse".to_string()), None).expect("database should be created");
+			create_database(&database_path, 20, &Zeroizing::new("correct horse".to_string()), None).expect("database should be created");
 
 		{
 			let mut root = database.root_mut();
@@ -372,7 +388,7 @@ mod tests {
 		let dir = TestDir::new();
 		let database_path = dir.join("no-notes.kdbx");
 		let (mut database, key, mut entries) =
-			create_database(&database_path, &Zeroizing::new("correct horse".to_string()), None).expect("database should be created");
+			create_database(&database_path, 30, &Zeroizing::new("correct horse".to_string()), None).expect("database should be created");
 
 		{
 			let mut root = database.root_mut();
@@ -395,7 +411,8 @@ mod tests {
 		let keyfile_path = dir.join("database.keyx");
 		fs::write(&keyfile_path, XML_V1_KEYFILE).expect("XML v1 keyfile should be written");
 
-		create_database(&database_path, &Zeroizing::new("correct horse".to_string()), Some(&keyfile_path)).expect("composite-key database should be created");
+		create_database(&database_path, 40, &Zeroizing::new("correct horse".to_string()), Some(&keyfile_path))
+			.expect("composite-key database should be created");
 		unlock_database(&database_path, &Zeroizing::new("correct horse".to_string()), Some(&keyfile_path))
 			.expect("database should unlock with password and keyfile");
 
@@ -410,7 +427,7 @@ mod tests {
 		let keyfile_path = dir.join("database.keyx");
 		fs::write(&keyfile_path, [42_u8; 32]).expect("keyfile should be written");
 
-		let (mut database, _, mut entries) = create_database(&database_path, &Zeroizing::new("old password".to_string()), Some(&keyfile_path))
+		let (mut database, _, mut entries) = create_database(&database_path, 50, &Zeroizing::new("old password".to_string()), Some(&keyfile_path))
 			.expect("composite-key database should be created");
 		let new_key = build_database_key(&Zeroizing::new("new password".to_string()), Some(&keyfile_path)).expect("new composite key should be built");
 
@@ -454,7 +471,7 @@ mod tests {
 		fs::write(&correct_keyfile, [7_u8; 32]).expect("correct keyfile should be written");
 		fs::write(&wrong_keyfile, [9_u8; 32]).expect("wrong keyfile should be written");
 
-		create_database(&database_path, &Zeroizing::new("secret".to_string()), Some(&correct_keyfile)).expect("composite-key database should be created");
+		create_database(&database_path, 60, &Zeroizing::new("secret".to_string()), Some(&correct_keyfile)).expect("composite-key database should be created");
 
 		let error = unlock_database(&database_path, &Zeroizing::new("secret".to_string()), Some(&wrong_keyfile))
 			.err()
@@ -462,5 +479,51 @@ mod tests {
 			.to_string();
 		assert!(error.contains("password + keyfile"));
 		assert!(error.contains("Incorrect key"));
+	}
+
+	#[test]
+	fn changing_kdf_iterations_persists_across_multiple_changes() {
+		let dir = TestDir::new();
+		let database_path = dir.join("kdf-iterations.kdbx");
+		let password = Zeroizing::new("correct horse".to_string());
+
+		let (_database, key, mut entries) = create_database(&database_path, 10, &password, None).expect("database should be created");
+
+		for expected_iterations in [200, 90] {
+			let (mut database, _, _) = unlock_database(&database_path, &password, None).expect("database should unlock");
+
+			reconcile_kdf_iterations(&database_path, &key, &mut database, &mut entries, expected_iterations).expect("KDF iterations should be reconciled");
+
+			let (reopened, _, _) = unlock_database(&database_path, &password, None).expect("database should unlock after KDF change");
+
+			match reopened.config.kdf_config {
+				keepass::config::KdfConfig::Argon2 { iterations, .. } => {
+					assert_eq!(iterations, expected_iterations, "saved database should contain the configured KDF iteration count");
+				}
+				_ => panic!("expected Argon2 KDF after reopening"),
+			}
+		}
+	}
+
+	#[test]
+	fn reconcile_kdf_iterations_updates_database_to_configured_value() {
+		let dir = TestDir::new();
+		let database_path = dir.join("kdf-reconcile.kdbx");
+		let password = Zeroizing::new("correct horse".to_string());
+
+		let (mut db, key, mut entries) = create_database(&database_path, 10, &password, None).expect("database should be created");
+
+		let changed = super::reconcile_kdf_iterations(&database_path, &key, &mut db, &mut entries, 90).expect("KDF iterations should be reconciled");
+
+		assert!(changed);
+
+		let (reopened, _, _) = unlock_database(&database_path, &password, None).expect("database should unlock after reconciliation");
+
+		match reopened.config.kdf_config {
+			keepass::config::KdfConfig::Argon2 { iterations, .. } => {
+				assert_eq!(iterations, 90);
+			}
+			_ => panic!("expected Argon2 KDF"),
+		}
 	}
 }

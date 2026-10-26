@@ -10,6 +10,7 @@ use crate::util::expand_tilde;
 const SAMPLE_CONFIG: &str = include_str!("../default_config.toml");
 const AUTO_EXIT: u64 = 300;
 const CONFIGFILE: &str = "~/.config/kptui/config.toml";
+const KDF_ITERATIONS: u64 = 90;
 
 fn sibling_tmp_path(path: &Path) -> PathBuf {
 	let mut tmp = path.as_os_str().to_os_string();
@@ -20,13 +21,20 @@ fn sibling_tmp_path(path: &Path) -> PathBuf {
 pub struct Config {
 	pub default_database: Option<PathBuf>,
 	pub keyfile: Option<PathBuf>,
+	pub kdf_iterations: u64,
 	pub auto_exit: Duration,
 	pub theme: Option<String>,
 }
 
 impl Default for Config {
 	fn default() -> Self {
-		Self { default_database: None, keyfile: None, auto_exit: Duration::from_secs(AUTO_EXIT), theme: None }
+		Self {
+			default_database: None,
+			keyfile: None,
+			kdf_iterations: KDF_ITERATIONS,
+			auto_exit: Duration::from_secs(AUTO_EXIT),
+			theme: None,
+		}
 	}
 }
 
@@ -35,6 +43,7 @@ struct ConfigFile {
 	database: Option<String>,
 	default_database: Option<String>,
 	keyfile: Option<String>,
+	kdf_iterations: Option<u64>,
 	auto_exit: Option<u64>,
 	theme: Option<String>,
 }
@@ -49,9 +58,7 @@ pub fn load_config() -> anyhow::Result<Config> {
 
 		let mut options = fs::OpenOptions::new();
 		options.write(true).create_new(true);
-
 		let result = options.open(&path);
-
 		match result {
 			Ok(mut file) => {
 				use std::io::Write;
@@ -74,6 +81,7 @@ fn parse_config(text: &str) -> anyhow::Result<Config> {
 	Ok(Config {
 		default_database: raw.database.or(raw.default_database).map(|s| expand_tilde(&s)),
 		keyfile: raw.keyfile.filter(|s| !s.is_empty()).map(|s| expand_tilde(&s)),
+		kdf_iterations: raw.kdf_iterations.unwrap_or(defaults.kdf_iterations),
 		auto_exit: raw.auto_exit.map(Duration::from_secs).unwrap_or(defaults.auto_exit),
 		theme: raw.theme,
 	})
@@ -83,6 +91,7 @@ fn parse_config(text: &str) -> anyhow::Result<Config> {
 struct ConfigFileOut<'a> {
 	database: Option<String>,
 	keyfile: String,
+	kdf_iterations: u64,
 	auto_exit: u64,
 	theme: Option<&'a str>,
 }
@@ -125,6 +134,7 @@ fn serialize_config(config: &Config) -> anyhow::Result<String> {
 	let out = ConfigFileOut {
 		database: config.default_database.as_ref().map(|p| p.display().to_string()),
 		keyfile: config.keyfile.as_ref().map(|p| p.display().to_string()).unwrap_or_default(),
+		kdf_iterations: config.kdf_iterations,
 		auto_exit: config.auto_exit.as_secs(),
 		theme: config.theme.as_deref(),
 	};

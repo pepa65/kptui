@@ -1,11 +1,14 @@
-# Existing KDBX database to open
+# Existing KDBX database to open (or new database to create)
 database = "~/.local/share/kptui/default.kdbx"
 
-# Optional KeePass keyfile (leave empty for password-only vaults)
+# Optional KeePass keyfile [empty for password-only vaults]
 keyfile = "~/.local/share/kptui/default.keyx"
 
-# Seconds of inactivity before exiting the app (0: never auto-exit)
+# Argon2 KDF iterations (time cost) [default: 90]
+kdf_iterations = 90
+
+# Seconds of inactivity before exiting the app [0: never auto-exit]
 auto_exit = 300
 
 # Name of a theme installed in ~/.config/kptui/themes/
-theme = "melange_dark.toml"
+theme = "mélange_dark"

@@ -66,6 +66,7 @@ pub struct App {
 	pub keyfile_change_step: KeyfileChangeStep,
 	pub keyfile_path_buffer: String,
 	pub query: Zeroizing<String>,
+	pub search_notes: bool,
 	pub max_len: usize,
 	pub index_state: TableState,
 	pub index_page_size: usize,
@@ -131,7 +132,12 @@ impl App {
 			.entries
 			.iter()
 			.enumerate()
-			.filter(|(_, entry)| query.is_empty() || entry.name.to_lowercase().contains(query.as_str()) || entry.user.to_lowercase().contains(query.as_str()))
+			.filter(|(_, entry)| {
+				query.is_empty()
+					|| entry.name.to_lowercase().contains(query.as_str())
+					|| entry.user.to_lowercase().contains(query.as_str())
+					|| (self.search_notes && Zeroizing::new(entry.notes.to_lowercase()).contains(query.as_str()))
+			})
 			.map(|(i, _)| i)
 			.collect();
 
@@ -183,6 +189,7 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 		keyfile_change_step: KeyfileChangeStep::Current,
 		keyfile_path_buffer: String::new(),
 		query: Zeroizing::new(String::new()),
+		search_notes: false,
 		max_len: 0,
 		theme,
 		config,

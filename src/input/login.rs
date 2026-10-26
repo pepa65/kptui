@@ -5,7 +5,7 @@ use zeroize::Zeroize;
 
 use crate::app::{App, Screen};
 use crate::config::save_config;
-use crate::db::{create_database, unlock_database};
+use crate::db::{create_database, reconcile_kdf_iterations, unlock_database};
 use crate::input::command::open_settings;
 use crate::input::secret_pop;
 use crate::util::default_new_database_path;
@@ -152,7 +152,7 @@ fn finish_create_database(app: &mut App) {
 pub fn create_database_with_password(app: &mut App) {
 	let path = app.config.default_database.clone().unwrap_or_else(default_new_database_path);
 
-	match create_database(&path, &app.password, app.config.keyfile.as_deref()) {
+	match create_database(&path, app.config.kdf_iterations, &app.password, app.config.keyfile.as_deref()) {
 		Ok((db, key, entries)) => {
 			app.config.default_database = Some(path.clone());
 			let save_result = save_config(&app.config);
@@ -191,7 +191,9 @@ pub fn attempt_unlock(app: &mut App) {
 	};
 
 	match unlock_database(&path, &app.password, app.config.keyfile.as_deref()) {
-		Ok((db, key, entries)) => {
+		Ok((mut db, key, mut entries)) => {
+			let reconcile_error = reconcile_kdf_iterations(&path, &key, &mut db, &mut entries, app.config.kdf_iterations).err();
+
 			app.entries = entries;
 			app.kdbx = Some(db);
 			app.db_key = Some(key);
@@ -200,6 +202,10 @@ pub fn attempt_unlock(app: &mut App) {
 			app.last_activity = Instant::now();
 			app.refresh_filter();
 			app.screen = Screen::Index;
+
+			if let Some(err) = reconcile_error {
+				app.status = Some(format!("WARNING: Database unlocked, but couldn't save configured KDF iterations: {err:#}"));
+			}
 		}
 		Err(err) => {
 			app.password.zeroize();

@@ -14,8 +14,8 @@
 * Very secure in its default configuration, impossible to brute-force (so unlocking takes a few seconds!).
   - Writes to `KDBX4.1` hardened with Argon2.
   - KDF-Memory: `262144 KiB`
-  - KDF-iterations: `90` (!)
-  - KDF-parallel: `4`
+  - KDF-Iterations: `90` (!) [configurable]
+  - KDF-Parallel: `4`
 * The Terminal User Interface is responsive and fully keyboard-driven.
 * Stores: `Name` of the entry, `Username`, `Password`, `TOTP`, `URL` and `Notes` (only what it needs).
 
@@ -24,7 +24,9 @@
   KeePassXC, KeePassDX/KeePass2Android, KeeWeb, KeePass2 or any other compatible client.
 * **Optional keyfile support**: Can unlocks vaults protected by a master password plus a keyfile,
   but password-only vault is also supported.
-* **Filtered search**: Start typing on the index screen to filter entries by Name or Username.
+* **Configurable KDF iterations**: If more or less paranoid (the default 90 is a high setting).
+* **Filtered search**: Start typing on the index screen to filter entries on Name & User,
+  or on Name/User/Notes (toggled by control-C).
 * **TOTP codes**: Generates live 2FA codes from a stored seed and saves `otpauth://` URI.
   - Editable as: `SECRET [DIGITS [PERIOD]]` (`PERIOD` defaults to `30`, and `DIGITS` to `6`)
 * **Auto-exit**: The whole app can close itself automatically after a set period of inactivity
@@ -101,6 +103,7 @@ It will be installed in `~/.cargo/bin/` which will need to be added to `PATH`!
 # Example
 database = "~/passwords.kdbx"
 keyfile = ""  # Empty means: no keyfile is set
+kdf_iterations = 90  # The default
 ```
 * The interface requires a terminal dimensions of at least 44 colums by 24 rows (but 24x12 is still functional).
 * Run in smaller terminals with: `kptui slim` (at least 27 columns by 10 rows required, but 19x11 is still functional).
@@ -117,6 +120,7 @@ See `default_config.toml` in this repo:
 ```toml
 database = "~/.local/share/kptui/default.kdbx"
 keyfile = "~/.local/share/kptui/default.keyx"  # Optional (empty for password-only vaults)
+kdf_iterations = 90  # Can be lower if less paranoid about being brute-forced
 auto_exit = 300  # Seconds of inactivity before exiting the app
 theme = "melange_dark.toml"  # Theme from ~/.local/share/kptui/themes
 ```

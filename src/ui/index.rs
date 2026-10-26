@@ -13,9 +13,9 @@ use crate::util::wrap_help_items;
 
 fn help_items(slim_mode: bool) -> &'static [&'static str] {
 	if slim_mode {
-		&["[↑↓]", "[^a]", "[^d]", "[^c]", "[Enter]", "[Esc]"]
+		&["[^s]", "[Enter]", "[Esc]", "[^a]", "[^d]", "[^c]"]
 	} else {
-		&["[↑↓] Navigate", "[^a] Add entry", "[^d] Delete entry", "[^c] Configuration", "[Enter] Entry", "[Esc] Quit"]
+		&["[^s] Search", "[Enter] View", "[Esc] Quit", "[^a] Add", "[^d] Delete", "[^c] Config"]
 	}
 }
 
@@ -85,6 +85,7 @@ pub fn draw_index(frame: &mut Frame, app: &mut App) {
 
 	let query_area = query_row[1];
 	app.max_len = query_area.width.saturating_sub(4) as usize;
+	let title = if app.search_notes { " Index [Name/User/Notes] " } else { " Index [Name/User] " };
 	let input_text = app.query.clone();
 	let input_style = Style::default().fg(app.theme.text);
 	let input = Paragraph::new(input_text.as_str()).style(input_style).block(
@@ -92,7 +93,7 @@ pub fn draw_index(frame: &mut Frame, app: &mut App) {
 			.borders(Borders::ALL)
 			.padding(Padding::horizontal(1))
 			.border_style(Style::default().fg(app.theme.border))
-			.title(Span::styled(" Index ", Style::default().fg(app.theme.error))),
+			.title(Span::styled(title, Style::default().fg(app.theme.error))),
 	);
 	frame.set_cursor_position((query_area.x + 2 + input_text.chars().count() as u16, query_area.y + 1));
 	frame.render_widget(input, query_area);
