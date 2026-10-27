@@ -155,8 +155,8 @@ pub fn create_database_with_password(app: &mut App) {
 	match create_database(&path, app.config.kdf_iterations, &app.password, app.config.keyfile.as_deref()) {
 		Ok((db, key, entries)) => {
 			app.config.default_database = Some(path.clone());
+			app.db_version = crate::db::kdbx_version(&path);
 			let save_result = save_config(&app.config);
-
 			app.kdbx = Some(db);
 			app.db_key = Some(key);
 			app.entries = entries;

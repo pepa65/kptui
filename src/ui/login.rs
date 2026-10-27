@@ -41,6 +41,7 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 		Static(&'a str),
 	}
 
+	let version_title = app.db_version.as_ref().map(|v| format!(" {v} "));
 	let (title, content) = if app.creating_database {
 		if app.confirming_new_db_password {
 			(" Confirm master password ", BoxContent::Masked(&app.new_db_confirm))
@@ -50,7 +51,7 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 	} else if missing {
 		(" Database file not present ", BoxContent::Static("[c] Create the new database"))
 	} else {
-		("", BoxContent::Masked(&app.password))
+		(version_title.as_deref().unwrap_or(""), BoxContent::Masked(&app.password))
 	};
 
 	let input_text = match content {

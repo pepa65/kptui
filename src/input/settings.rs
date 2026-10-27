@@ -95,9 +95,7 @@ pub fn handle_settings_input(app: &mut App, key: KeyEvent) {
 }
 
 fn activate_selected(app: &mut App) {
-	let Some(selected) = app.settings_state.selected() else {
-		return;
-	};
+	let selected = app.settings_state.selected().unwrap_or(0);
 
 	// Login settings must never expose authenticated database operations.
 	if app.login_settings && selected >= CHANGE_PASSWORD_ROW {
@@ -306,6 +304,7 @@ fn commit_field(app: &mut App) {
 	match selected {
 		DATABASE_ROW => {
 			app.config.default_database = if value.trim().is_empty() { None } else { Some(expand_tilde(value.trim())) };
+			app.db_version = app.config.default_database.as_deref().and_then(crate::db::kdbx_version);
 		}
 
 		KEYFILE_ROW => {

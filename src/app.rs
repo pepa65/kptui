@@ -67,6 +67,7 @@ pub struct TotpCache {
 pub struct App {
 	pub screen: Screen,
 	pub login_settings: bool,
+	pub db_version: Option<String>,
 	pub password: Zeroizing<String>,
 	pub changing_keyfile: bool,
 	pub keyfile_change_step: KeyfileChangeStep,
@@ -191,6 +192,7 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 	let mut app = App {
 		screen: Screen::Login,
 		login_settings: false,
+		db_version: None,
 		password,
 		changing_keyfile: false,
 		keyfile_change_step: KeyfileChangeStep::Current,
@@ -245,6 +247,7 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 		should_quit: false,
 		slim_mode,
 	};
+	app.db_version = app.config.default_database.as_deref().and_then(crate::db::kdbx_version);
 	if !app.password.is_empty() {
 		if database_missing(&app) {
 			create_database_with_password(&mut app);

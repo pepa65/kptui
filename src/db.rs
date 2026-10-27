@@ -1,6 +1,7 @@
 use std::ffi::OsString;
 use std::fmt::Write;
 use std::fs::{self, File, OpenOptions};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -10,6 +11,24 @@ use keepass::config::DatabaseVersion;
 use keepass::db::{EntryId, EntryMut, EntryRef, Times, fields};
 use keepass::{Database, DatabaseKey};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
+
+pub fn kdbx_version(path: &Path) -> Option<String> {
+	let mut header = [0u8; 12];
+	File::open(path).ok()?.read_exact(&mut header).ok()?;
+	if header[0..4] != [0x03, 0xD9, 0xA2, 0x9A] {
+		return None;
+	}
+
+	match header[4..8] {
+		[0x67, 0xFB, 0x4B, 0xB5] => {
+			let minor = u16::from_le_bytes([header[8], header[9]]);
+			let major = u16::from_le_bytes([header[10], header[11]]);
+			Some(format!("KDBX{major}.{minor}"))
+		}
+		[0x65, 0xFB, 0x4B, 0xB5] => Some("KDB".to_string()), // KeePass 1.x
+		_ => None,
+	}
+}
 
 fn resolve_totp(e: &EntryRef) -> String {
 	if let Some(otp) = e.get_raw_otp_value()
