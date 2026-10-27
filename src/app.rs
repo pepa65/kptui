@@ -14,6 +14,7 @@ use zeroize::Zeroizing;
 
 use crate::config::{Config, load_config};
 use crate::db::Entry;
+use crate::input::SECRET_CAP;
 use crate::input::edit::{handle_edit_input, process_pending_save};
 use crate::input::fieldedit::FieldEditor;
 use crate::input::index::handle_index_input;
@@ -58,6 +59,11 @@ pub enum ExportStep {
 	Confirm,
 }
 
+pub struct TotpCache {
+	pub code: Zeroizing<String>,
+	pub expires: Instant,
+}
+
 pub struct App {
 	pub screen: Screen,
 	pub login_settings: bool,
@@ -65,6 +71,7 @@ pub struct App {
 	pub changing_keyfile: bool,
 	pub keyfile_change_step: KeyfileChangeStep,
 	pub keyfile_path_buffer: String,
+	pub totp_cache: Option<TotpCache>,
 	pub query: Zeroizing<String>,
 	pub search_notes: bool,
 	pub max_len: usize,
@@ -188,7 +195,8 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 		changing_keyfile: false,
 		keyfile_change_step: KeyfileChangeStep::Current,
 		keyfile_path_buffer: String::new(),
-		query: Zeroizing::new(String::new()),
+		totp_cache: None,
+		query: Zeroizing::new(String::with_capacity(crate::input::SECRET_CAP)),
 		search_notes: false,
 		max_len: 0,
 		theme,
@@ -199,13 +207,13 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 		theme_state: ListState::default(),
 		changing_password: false,
 		password_change_step: PasswordChangeStep::Current,
-		current_password_buffer: Zeroizing::new(String::new()),
-		new_password_buffer: Zeroizing::new(String::new()),
-		new_password_confirm: Zeroizing::new(String::new()),
+		current_password_buffer: Zeroizing::new(String::with_capacity(SECRET_CAP)),
+		new_password_buffer: Zeroizing::new(String::with_capacity(SECRET_CAP)),
+		new_password_confirm: Zeroizing::new(String::with_capacity(SECRET_CAP)),
 		importing_database: false,
 		import_step: ImportStep::Path,
 		import_path_buffer: String::new(),
-		import_kdbx_password_buffer: Zeroizing::new(String::new()),
+		import_kdbx_password_buffer: Zeroizing::new(String::with_capacity(SECRET_CAP)),
 		pending_import_path: None,
 		exporting_database: false,
 		export_step: ExportStep::Path,
@@ -232,7 +240,7 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 		db_key: None,
 		creating_database: false,
 		confirming_new_db_password: false,
-		new_db_confirm: Zeroizing::new(String::new()),
+		new_db_confirm: Zeroizing::new(String::with_capacity(SECRET_CAP)),
 		status: None,
 		should_quit: false,
 		slim_mode,
@@ -245,7 +253,7 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 		}
 	}
 	const TICK_RATE: Duration = Duration::from_millis(200);
-
+	let mut last_scroll = 0usize;
 	loop {
 		terminal.draw(|frame| {
 			frame.render_widget(Block::default().style(Style::default().bg(app.theme.background)), frame.area());
@@ -256,6 +264,13 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 				Screen::Settings => draw_settings(frame, &mut app),
 			}
 		})?;
+		if app.screen != Screen::Edit {
+			last_scroll = 0;
+		} else if app.field_editor_scroll != last_scroll {
+			last_scroll = app.field_editor_scroll;
+			terminal.clear()?;
+			terminal.draw(|frame| draw_edit(frame, &mut app))?;
+		}
 		if app.pending_save {
 			process_pending_save(&mut app);
 			continue;

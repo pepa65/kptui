@@ -2,6 +2,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::App;
 use crate::input::command::{handle_shortcut, preview_entry};
+use crate::input::{secret_pop, secret_push};
 
 fn start_delete_confirmation(app: &mut App, index: usize) {
 	if index >= app.entries.len() {
@@ -86,14 +87,14 @@ pub fn handle_index_input(app: &mut App, key: KeyEvent) {
 			app.status = None;
 
 			if app.query.len() < app.max_len {
-				app.query.push(c);
+				secret_push(&mut app.query, c);
 				app.refresh_filter();
 			}
 		}
 
 		KeyCode::Backspace => {
 			app.status = None;
-			app.query.pop();
+			secret_pop(&mut app.query);
 			app.refresh_filter();
 		}
 

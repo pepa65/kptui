@@ -1,5 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use keepass::config::DatabaseVersion;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::app::{App, Screen};
 use crate::db::{parse_totp_edit_value, save_database, totp_edit_value};
@@ -124,22 +125,30 @@ fn handle_field_input(app: &mut App, key: KeyEvent) {
 	}
 }
 
+/// Wipes the old value, then moves the new one in without copying.
+fn set_field(slot: &mut String, mut value: Zeroizing<String>) {
+	slot.zeroize();
+	*slot = std::mem::take(&mut *value);
+}
+
 fn commit_field(app: &mut App) {
 	let selected = app.edit_state.selected().unwrap_or(0);
 
-	let value = app.field_editor.take().map(|editor| editor.into_text()).unwrap_or_default();
+	let mut value = app.field_editor.take().map(|editor| editor.into_text()).unwrap_or_else(|| Zeroizing::new(String::new()));
 
 	if selected == TOTP_INDEX {
 		match parse_totp_edit_value(&value) {
 			Ok(totp) => {
 				if let Some(entry) = app.edit_entry.as_mut() {
+					entry.totp.zeroize();
 					entry.totp = totp;
 				}
 				app.editing_field = false;
+				app.totp_cache = None;
 			}
 			Err(err) => {
 				app.status = Some(format!("TOTP should be SECRET DIGITS PERIOD: {err}"));
-				app.field_editor = Some(FieldEditor::with_text(&value));
+				app.field_editor = Some(FieldEditor::with_text(value.as_str()));
 			}
 		}
 		return;
@@ -147,13 +156,12 @@ fn commit_field(app: &mut App) {
 	if let Some(entry) = app.edit_entry.as_mut() {
 		match selected {
 			NAME_INDEX => {
-				entry.name = if value.trim().is_empty() { String::new() } else { value };
+				entry.name = if value.trim().is_empty() { String::new() } else { std::mem::take(&mut *value) };
 			}
-			USER_INDEX => entry.user = value,
-			PASSWORD_INDEX => entry.password = value,
-			URL_INDEX => entry.url = value,
-			NOTES_INDEX => entry.notes = value,
-			LAST_MODIFIED_INDEX => {}
+			USER_INDEX => set_field(&mut entry.user, value),
+			PASSWORD_INDEX => set_field(&mut entry.password, value),
+			URL_INDEX => entry.url = std::mem::take(&mut *value),
+			NOTES_INDEX => set_field(&mut entry.notes, value),
 			_ => {}
 		}
 	}
@@ -216,6 +224,7 @@ fn reset_edit_state(app: &mut App) {
 	app.confirm_exit = false;
 	app.edit_state.select(None);
 	app.screen = Screen::Index;
+	app.totp_cache = None;
 }
 
 fn save_edit(app: &mut App) -> Option<usize> {

@@ -7,7 +7,7 @@ use crate::app::{App, Screen};
 use crate::config::save_config;
 use crate::db::{create_database, reconcile_kdf_iterations, unlock_database};
 use crate::input::command::open_settings;
-use crate::input::secret_pop;
+use crate::input::{secret_pop, secret_push};
 use crate::util::default_new_database_path;
 
 pub fn handle_login_input(app: &mut App, key: KeyEvent) {
@@ -37,7 +37,7 @@ pub fn handle_login_input(app: &mut App, key: KeyEvent) {
 			app.login_error = None;
 
 			if app.password.len() < app.max_len {
-				app.password.push(c);
+				secret_push(&mut app.password, c);
 			}
 		}
 
@@ -105,10 +105,10 @@ fn handle_create_database_input(app: &mut App, key: KeyCode) {
 
 			if app.confirming_new_db_password {
 				if app.new_db_confirm.len() < limit {
-					app.new_db_confirm.push(c);
+					secret_push(&mut app.new_db_confirm, c);
 				}
 			} else if app.password.len() < limit {
-				app.password.push(c);
+				secret_push(&mut app.password, c);
 			}
 		}
 

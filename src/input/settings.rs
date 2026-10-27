@@ -8,7 +8,7 @@ use crate::app::{App, ExportStep, ImportStep, KeyfileChangeStep, PasswordChangeS
 use crate::config::save_config;
 use crate::db::{Entry, build_database_key, save_database, unlock_database};
 use crate::input::fieldedit::{EditAction, FieldEditor};
-use crate::input::secret_pop;
+use crate::input::{secret_pop, secret_push};
 use crate::theme::load_theme;
 use crate::util::expand_tilde;
 
@@ -164,7 +164,7 @@ fn handle_change_keyfile_input(app: &mut App, key: KeyCode) {
 			match app.keyfile_change_step {
 				KeyfileChangeStep::Current => {
 					if app.current_password_buffer.len() < limit {
-						app.current_password_buffer.push(c);
+						secret_push(&mut app.current_password_buffer, c);
 					}
 				}
 				KeyfileChangeStep::Path => {
@@ -412,7 +412,7 @@ fn handle_change_password_input(app: &mut App, key: KeyCode) {
 			};
 
 			if buffer.len() < limit {
-				buffer.push(c);
+				secret_push(buffer, c);
 			}
 		}
 
@@ -537,7 +537,7 @@ fn handle_import_input(app: &mut App, key: KeyCode) {
 			};
 
 			if buffer.len() < limit {
-				buffer.push(c);
+				secret_push(buffer, c);
 			}
 		}
 

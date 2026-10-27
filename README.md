@@ -139,3 +139,5 @@ All fields are optional, as the above are the default values.
   All edits and changes will be lost (0: never auto-exit).
 * When the app is open and the vault not locked, secrets are kept in memory!
 * When the app exits, there are no plaintext secrets left anywhere in memory.
+* Using encrypted swap or zram (or no swap) increases security.
+* On Linux, some extra hardening takes place in the operation of kptui.

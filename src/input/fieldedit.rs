@@ -6,7 +6,7 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditAction {
@@ -80,8 +80,8 @@ impl FieldEditor {
 		&self.text
 	}
 
-	pub fn into_text(mut self) -> String {
-		std::mem::take(&mut self.text)
+	pub fn into_text(mut self) -> Zeroizing<String> {
+		Zeroizing::new(std::mem::take(&mut self.text))
 	}
 
 	pub fn cursor(&self) -> usize {
@@ -96,11 +96,35 @@ impl FieldEditor {
 		self.mode == FieldMode::Multiline
 	}
 
+	/// Makes room for `additional` bytes. If the buffer must grow, the text is
+	/// copied into a new allocation and the old one is wiped before being freed.
+	fn reserve(&mut self, additional: usize) {
+		if self.text.capacity() - self.text.len() >= additional {
+			return;
+		}
+		let new_cap = (self.text.len() + additional).max(self.text.capacity() * 2).max(256);
+		let mut bigger = String::with_capacity(new_cap);
+		bigger.push_str(&self.text);
+		self.text.zeroize(); // wipes the whole old allocation
+		self.text = bigger;
+	}
+
+	/// Zeroes the unused bytes after `len()`, where deleted text would linger.
+	fn wipe_spare(&mut self) {
+		// SAFETY: only bytes beyond len() are written; the length and the
+		// initialized content (so UTF-8 validity) are untouched.
+		let v = unsafe { self.text.as_mut_vec() };
+		for b in v.spare_capacity_mut() {
+			b.write(0);
+		}
+	}
+
 	pub fn insert(&mut self, ch: char) {
 		if self.is_single_line() && ch == '\n' {
 			return;
 		}
 
+		self.reserve(ch.len_utf8());
 		self.text.insert(self.cursor, ch);
 		self.cursor += ch.len_utf8();
 		self.preferred_column = None;
@@ -181,6 +205,7 @@ impl FieldEditor {
 
 		let start = previous_char_boundary(&self.text, self.cursor);
 		self.text.drain(start..self.cursor);
+		self.wipe_spare();
 		self.cursor = start;
 		self.preferred_column = None;
 	}
@@ -192,6 +217,7 @@ impl FieldEditor {
 
 		let end = next_char_boundary(&self.text, self.cursor);
 		self.text.drain(self.cursor..end);
+		self.wipe_spare();
 		self.preferred_column = None;
 	}
 
@@ -270,9 +296,9 @@ impl FieldEditor {
 		cursor_column - width + 1
 	}
 
-	pub fn single_line_view(&self, width: usize) -> (String, usize) {
+	pub fn single_line_view(&self, width: usize) -> (Zeroizing<String>, usize) {
 		if width == 0 {
-			return (String::new(), 0);
+			return (Zeroizing::new(String::new()), 0);
 		}
 
 		let scroll = self.horizontal_scroll(width);
@@ -290,7 +316,7 @@ impl FieldEditor {
 			start_byte = byte + ch.len_utf8();
 		}
 
-		let mut visible = String::new();
+		let mut end_byte = start_byte;
 		let mut visible_width = 0;
 
 		for ch in self.text[start_byte..].chars() {
@@ -300,10 +326,12 @@ impl FieldEditor {
 				break;
 			}
 
-			visible.push(ch);
 			visible_width += ch_width;
+			end_byte += ch.len_utf8();
 		}
 
+		// One exact-size allocation, wiped when dropped.
+		let visible = Zeroizing::new(self.text[start_byte..end_byte].to_owned());
 		let cursor_column = self.cursor_display_column().saturating_sub(start_column);
 
 		(visible, cursor_column.min(width))

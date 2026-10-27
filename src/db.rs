@@ -1,4 +1,5 @@
 use std::ffi::OsString;
+use std::fmt::Write;
 use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::process;
@@ -106,7 +107,7 @@ pub fn parse_totp_edit_value(input: &str) -> anyhow::Result<String> {
 		anyhow::bail!("TOTP format is: SEED [DIGITS [PERIOD]]");
 	}
 
-	let seed = parts[0].to_ascii_uppercase();
+	let seed = Zeroizing::new(parts[0].to_ascii_uppercase());
 	if seed.is_empty() {
 		return Ok(String::new());
 	}
@@ -127,7 +128,9 @@ pub fn parse_totp_edit_value(input: &str) -> anyhow::Result<String> {
 		anyhow::bail!("TOTP period must be greater than zero");
 	}
 
-	Ok(format!("otpauth://totp/?secret={seed}&digits={digits}&period={period}"))
+	let mut out = String::with_capacity(64 + seed.len());
+	let _ = write!(out, "otpauth://totp/?secret={}&digits={digits}&period={period}", seed.as_str());
+	Ok(out)
 }
 
 fn urlencoding_encode(input: &str) -> String {

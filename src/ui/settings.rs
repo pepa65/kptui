@@ -161,7 +161,7 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 			let (visible, cursor_column) = editor.single_line_view(editor_width as usize);
 			let field_area = Rect { x: editor_x, y: value_y, width: editor_width, height: 1 };
 			frame.render_widget(Clear, field_area);
-			frame.render_widget(Paragraph::new(visible).style(normal), field_area);
+			frame.render_widget(Paragraph::new(visible.as_str()).style(normal), field_area);
 			let cursor_x = field_area.x + cursor_column as u16;
 			frame.set_cursor_position((cursor_x, field_area.y));
 		}

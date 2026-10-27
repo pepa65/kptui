@@ -84,7 +84,7 @@ pub fn draw_index(frame: &mut Frame, app: &mut App) {
 	frame.render_stateful_widget(table_index, index_area, &mut app.index_state);
 
 	let query_area = query_row[1];
-	app.max_len = query_area.width.saturating_sub(4) as usize;
+	app.max_len = (query_area.width.saturating_sub(4) as usize).min(crate::input::SECRET_CAP);
 	let title = if app.search_notes { " Index [Name/User/Notes] " } else { " Index [Name/User] " };
 	let input_text = app.query.clone();
 	let input_style = Style::default().fg(app.theme.text);
