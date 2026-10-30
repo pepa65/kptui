@@ -62,7 +62,7 @@ pub fn cursor_position(text: &str, ranges: &[Range<usize>], cursor: usize) -> (u
 mod tests {
 	use super::*;
 
-	fn lines<'a>(text: &'a str, width: usize) -> Vec<&'a str> {
+	fn lines(text: &str, width: usize) -> Vec<&str> {
 		wrap_ranges(text, width).into_iter().map(|r| &text[r]).collect()
 	}
 

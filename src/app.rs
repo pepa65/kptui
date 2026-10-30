@@ -257,6 +257,7 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 	}
 	const TICK_RATE: Duration = Duration::from_millis(200);
 	let mut last_scroll = 0usize;
+	let mut last_len = 0usize;
 	loop {
 		terminal.draw(|frame| {
 			frame.render_widget(Block::default().style(Style::default().bg(app.theme.background)), frame.area());
@@ -269,10 +270,16 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 		})?;
 		if app.screen != Screen::Edit {
 			last_scroll = 0;
-		} else if app.field_editor_scroll != last_scroll {
+			last_len = 0;
+		} else {
+			let cur_len = app.field_editor.as_ref().map_or(0, |e| e.text().len());
+			let changed = app.field_editor_scroll != last_scroll || cur_len != last_len;
 			last_scroll = app.field_editor_scroll;
-			terminal.clear()?;
-			terminal.draw(|frame| draw_edit(frame, &mut app))?;
+			last_len = cur_len;
+			if changed {
+				terminal.clear()?;
+				terminal.draw(|frame| draw_edit(frame, &mut app))?;
+			}
 		}
 		if app.pending_save {
 			process_pending_save(&mut app);

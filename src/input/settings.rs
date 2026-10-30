@@ -338,11 +338,9 @@ fn commit_field(app: &mut App) {
 			};
 
 			if iterations != app.config.kdf_iterations {
-				if app.kdbx.is_some() {
-					if let Err(err) = change_kdf_iterations(app, iterations) {
-						app.status = Some(format!("couldn't change KDF iterations: {err:#}"));
-						return;
-					}
+				if app.kdbx.is_some() && let Err(err) = change_kdf_iterations(app, iterations) {
+					app.status = Some(format!("couldn't change KDF iterations: {err:#}"));
+					return;
 				}
 
 				app.config.kdf_iterations = iterations;

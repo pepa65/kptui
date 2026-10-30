@@ -47,9 +47,6 @@ pub fn preview_entry(app: &mut App) {
 
 pub fn open_settings(app: &mut App) {
 	app.status = None;
-	//if app.settings_state.selected().is_none() {
-	//	app.settings_state.select(Some(0));
-	//}
 	app.available_themes = match crate::theme::list_theme_names() {
 		Ok(themes) => themes,
 		Err(err) => {

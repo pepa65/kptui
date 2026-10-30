@@ -148,10 +148,7 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 		let list_area = vertical[0];
 
 		// The List has a one-cell border and one-cell horizontal padding.
-		// Each setting occupies three rows:
-		//   label
-		//   value/editor
-		//   blank
+		// Each setting occupies three rows: label, value/editor, blank
 		let value_y = list_area.y + 2 + selected as u16 * 3;
 
 		let editor_x = list_area.x + 2;
