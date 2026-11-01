@@ -983,9 +983,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "keepass"
-version = "0.18.1"
-source = "git+https://github.com/pepa65/keepass-rs?branch=new#22b131a04f37823ef46b35a0452c712b06655a95"
+name = "kplib"
+version = "0.18.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5201050be2bab5200654149dad975616f8b42abdb242593a8c7fba7584a1b2a4"
 dependencies = [
  "aes",
  "base32",
@@ -1019,13 +1020,13 @@ dependencies = [
 
 [[package]]
 name = "kptui"
-version = "0.33.1"
+version = "0.34.0"
 dependencies = [
  "anyhow",
  "chrono",
  "crossterm",
  "csv",
- "keepass",
+ "kplib",
  "ratatui",
  "rustix",
  "serde",
@@ -1097,9 +1098,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.34"
+version = "0.4.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
+checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
 
 [[package]]
 name = "lru"

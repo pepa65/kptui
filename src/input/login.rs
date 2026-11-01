@@ -35,10 +35,7 @@ pub fn handle_login_input(app: &mut App, key: KeyEvent) {
 
 		KeyCode::Char(c) => {
 			app.login_error = None;
-
-			if app.password.len() < app.max_len {
-				secret_push(&mut app.password, c);
-			}
+			secret_push(&mut app.password, c);
 		}
 
 		KeyCode::Backspace => {
@@ -101,13 +98,10 @@ fn handle_create_database_input(app: &mut App, key: KeyCode) {
 	match key {
 		KeyCode::Char(c) => {
 			app.login_error = None;
-			let limit = app.max_len;
 
 			if app.confirming_new_db_password {
-				if app.new_db_confirm.len() < limit {
-					secret_push(&mut app.new_db_confirm, c);
-				}
-			} else if app.password.len() < limit {
+				secret_push(&mut app.new_db_confirm, c);
+			} else {
 				secret_push(&mut app.password, c);
 			}
 		}

@@ -142,8 +142,8 @@ impl App {
 			.enumerate()
 			.filter(|(_, entry)| {
 				query.is_empty()
-					|| entry.name.to_lowercase().contains(query.as_str())
-					|| entry.user.to_lowercase().contains(query.as_str())
+					|| Zeroizing::new(entry.name.to_lowercase()).contains(query.as_str())
+					|| Zeroizing::new(entry.user.to_lowercase()).contains(query.as_str())
 					|| (self.search_notes && Zeroizing::new(entry.notes.to_lowercase()).contains(query.as_str()))
 			})
 			.map(|(i, _)| i)
@@ -152,7 +152,9 @@ impl App {
 		indices.sort_by(|&a, &b| {
 			let ea = &self.entries[a];
 			let eb = &self.entries[b];
-			ea.name.to_lowercase().cmp(&eb.name.to_lowercase())
+			let a = Zeroizing::new(ea.name.to_lowercase());
+			let b = Zeroizing::new(eb.name.to_lowercase());
+			a.cmp(&b)
 		});
 
 		indices

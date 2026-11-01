@@ -157,21 +157,20 @@ fn handle_change_keyfile_input(app: &mut App, key: KeyCode) {
 	match key {
 		KeyCode::Char(c) => {
 			app.status = None;
-			let limit = app.max_len.max(1);
 
 			match app.keyfile_change_step {
 				KeyfileChangeStep::Current => {
-					if app.current_password_buffer.len() < limit {
-						secret_push(&mut app.current_password_buffer, c);
-					}
+					secret_push(&mut app.current_password_buffer, c);
 				}
 				KeyfileChangeStep::Path => {
-					if app.keyfile_path_buffer.len() < limit {
+					let limit = app.max_len.max(1);
+					if c.len_utf8() <= limit.saturating_sub(app.keyfile_path_buffer.len()) {
 						app.keyfile_path_buffer.push(c);
 					}
 				}
 			}
 		}
+
 		KeyCode::Backspace => {
 			app.status = None;
 			match app.keyfile_change_step {
@@ -179,7 +178,7 @@ fn handle_change_keyfile_input(app: &mut App, key: KeyCode) {
 					secret_pop(&mut app.current_password_buffer);
 				}
 				KeyfileChangeStep::Path => {
-					secret_pop(&mut app.keyfile_path_buffer);
+					app.keyfile_path_buffer.pop();
 				}
 			}
 		}
@@ -338,7 +337,9 @@ fn commit_field(app: &mut App) {
 			};
 
 			if iterations != app.config.kdf_iterations {
-				if app.kdbx.is_some() && let Err(err) = change_kdf_iterations(app, iterations) {
+				if app.kdbx.is_some()
+					&& let Err(err) = change_kdf_iterations(app, iterations)
+				{
 					app.status = Some(format!("couldn't change KDF iterations: {err:#}"));
 					return;
 				}
@@ -400,7 +401,6 @@ fn handle_change_password_input(app: &mut App, key: KeyCode) {
 	match key {
 		KeyCode::Char(c) => {
 			app.status = None;
-			let limit = app.max_len.max(1);
 
 			let buffer = match app.password_change_step {
 				PasswordChangeStep::Current => &mut app.current_password_buffer,
@@ -408,9 +408,7 @@ fn handle_change_password_input(app: &mut App, key: KeyCode) {
 				PasswordChangeStep::ConfirmNew => &mut app.new_password_confirm,
 			};
 
-			if buffer.len() < limit {
-				secret_push(buffer, c);
-			}
+			secret_push(buffer, c);
 		}
 
 		KeyCode::Backspace => {
@@ -528,25 +526,29 @@ fn handle_import_input(app: &mut App, key: KeyCode) {
 			app.status = None;
 			let limit = app.max_len.max(1);
 
-			let buffer = match app.import_step {
-				ImportStep::Path => &mut app.import_path_buffer,
-				ImportStep::KdbxPassword => &mut app.import_kdbx_password_buffer,
-			};
-
-			if buffer.len() < limit {
-				secret_push(buffer, c);
+			match app.import_step {
+				ImportStep::Path => {
+					if c.len_utf8() <= limit.saturating_sub(app.import_path_buffer.len()) {
+						app.import_path_buffer.push(c);
+					}
+				}
+				ImportStep::KdbxPassword => {
+					secret_push(&mut app.import_kdbx_password_buffer, c);
+				}
 			}
 		}
 
 		KeyCode::Backspace => {
 			app.status = None;
 
-			let buffer = match app.import_step {
-				ImportStep::Path => &mut app.import_path_buffer,
-				ImportStep::KdbxPassword => &mut app.import_kdbx_password_buffer,
-			};
-
-			secret_pop(buffer);
+			match app.import_step {
+				ImportStep::Path => {
+					app.import_path_buffer.pop();
+				}
+				ImportStep::KdbxPassword => {
+					secret_pop(&mut app.import_kdbx_password_buffer);
+				}
+			}
 		}
 
 		KeyCode::Enter => match app.import_step {
@@ -661,7 +663,7 @@ fn handle_export_input(app: &mut App, key: KeyEvent) {
 
 			if app.export_step == ExportStep::Path {
 				let limit = app.max_len.max(1);
-				if app.export_path_buffer.len() < limit {
+				if c.len_utf8() <= limit.saturating_sub(app.export_path_buffer.len()) {
 					app.export_path_buffer.push(c);
 				}
 			}
@@ -671,7 +673,7 @@ fn handle_export_input(app: &mut App, key: KeyEvent) {
 			app.status = None;
 
 			if app.export_step == ExportStep::Path {
-				secret_pop(&mut app.export_path_buffer);
+				app.export_path_buffer.pop();
 			}
 		}
 

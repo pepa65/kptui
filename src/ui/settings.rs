@@ -14,7 +14,16 @@ use crate::util::wrap_help_items;
 
 fn centered_cursor_x(input_area: Rect, typed_len: u16) -> u16 {
 	let inner = Block::default().borders(Borders::ALL).inner(input_area);
-	inner.x + (inner.width / 2).saturating_sub(typed_len / 2) + typed_len
+	if inner.width == 0 {
+		return inner.x;
+	}
+
+	let offset = if typed_len < inner.width {
+		(inner.width - typed_len) / 2 + typed_len
+	} else {
+		inner.width - 1
+	};
+	inner.x + offset.min(inner.width - 1)
 }
 
 fn nav_help_items(slim_mode: bool) -> &'static [&'static str] {

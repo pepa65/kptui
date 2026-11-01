@@ -200,6 +200,14 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 	};
 
 	let inner = Block::default().borders(Borders::ALL).inner(input_area);
-	let cursor_x = inner.x + (inner.width / 2).saturating_sub(typed_len / 2) + typed_len;
-	frame.set_cursor_position((cursor_x, input_area.y + 1));
+	let width = inner.width;
+	let len = typed_len;
+
+	let cursor_offset = if len < width {
+		(width - len) / 2 + len
+	} else {
+		width.saturating_sub(1)
+	};
+
+	frame.set_cursor_position((inner.x + cursor_offset.min(width.saturating_sub(1)), inner.y));
 }

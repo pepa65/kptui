@@ -19,7 +19,7 @@ pub fn normalize_shortcut(key: KeyCode) -> KeyCode {
 }
 
 pub fn secret_push(secret: &mut String, c: char) -> bool {
-	if secret.len() + c.len_utf8() > secret.capacity() {
+	if c.len_utf8() > secret.capacity().saturating_sub(secret.len()) {
 		return false;
 	}
 
