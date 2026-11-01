@@ -132,6 +132,7 @@ All fields are optional, as the above are the default values.
   - The keyfile is always in addition to the mandatory password, as an extra requirement.
   - If the configured keyfile is missing, unreadable, empty, or incorrect, an explicit error is given.
   - The keyfile's path is stored in the config, never its contents.
+* Passwords can be piped in or entered in the UI, max.length 1024 bytes of UTF-8.
 * Changing the master password re-encrypts the whole vault in-place, and requires entering the **current** password first.
   (If a keyfile was set, it remains active.)
 * Changing the keyfile re-encrypts the whole vault in-place.

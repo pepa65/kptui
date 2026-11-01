@@ -12,8 +12,8 @@ use crate::input::{secret_pop, secret_push};
 use crate::theme::load_theme;
 use crate::util::expand_tilde;
 
-pub const ROW_COUNT: usize = 8;
-pub const CONFIG_ROW_COUNT: usize = 5;
+pub const UNLOCKED_ROW_COUNT: usize = 8;
+pub const LOCKED_ROW_COUNT: usize = 5;
 
 pub const DATABASE_ROW: usize = 0;
 pub const KEYFILE_ROW: usize = 1;
@@ -25,7 +25,7 @@ pub const IMPORT_ROW: usize = 6;
 pub const EXPORT_ROW: usize = 7;
 
 fn visible_row_count(app: &App) -> usize {
-	if app.login_settings { CONFIG_ROW_COUNT } else { ROW_COUNT }
+	if app.login_settings { LOCKED_ROW_COUNT } else { UNLOCKED_ROW_COUNT }
 }
 
 pub fn handle_settings_input(app: &mut App, key: KeyEvent) {
@@ -228,10 +228,9 @@ fn commit_keyfile_change(app: &mut App) {
 		return;
 	}
 
-	let password = zeroize::Zeroizing::new(app.current_password_buffer.to_string());
-
+	let password = std::mem::take(&mut app.current_password_buffer);
 	let result = rotate_database_credentials(app, &password, new_keyfile.as_deref());
-
+	app.current_password_buffer = password;
 	match result {
 		Ok(()) => {
 			app.config.keyfile = new_keyfile;
@@ -257,17 +256,23 @@ fn start_editing_kdf_iterations(app: &mut App) {
 
 fn change_kdf_iterations(app: &mut App, new_iterations: u64) -> anyhow::Result<()> {
 	let path = app.config.default_database.clone().ok_or_else(|| anyhow::anyhow!("no database configured"))?;
-
 	let key = app.db_key.clone().ok_or_else(|| anyhow::anyhow!("no unlocked database"))?;
-
 	let db = app.kdbx.as_mut().ok_or_else(|| anyhow::anyhow!("no unlocked database"))?;
-
-	if let keepass::config::KdfConfig::Argon2 { ref mut iterations, .. } = db.config.kdf_config {
+	let old_iterations = if let keepass::config::KdfConfig::Argon2 { ref mut iterations, .. } = db.config.kdf_config {
+		let old = *iterations;
 		*iterations = new_iterations;
+		old
 	} else {
 		anyhow::bail!("database does not use Argon2");
+	};
+
+	if let Err(err) = save_database(&path, &key, db, &mut app.entries) {
+		if let keepass::config::KdfConfig::Argon2 { ref mut iterations, .. } = db.config.kdf_config {
+			*iterations = old_iterations;
+		}
+		return Err(err);
 	}
-	save_database(&path, &key, db, &mut app.entries)?;
+
 	Ok(())
 }
 
@@ -486,7 +491,10 @@ fn commit_password_change(app: &mut App) {
 		return;
 	}
 
-	let new_password = zeroize::Zeroizing::new(app.new_password_buffer.clone());
+	let new_password = std::mem::replace(
+		&mut app.new_password_buffer,
+		zeroize::Zeroizing::new(String::with_capacity(crate::input::SECRET_CAP)),
+	);
 	let keyfile = app.config.keyfile.clone();
 	let result = rotate_database_credentials(app, &new_password, keyfile.as_deref());
 	app.status = Some(match result {
@@ -847,6 +855,6 @@ fn settings_rows_are_contiguous() {
 	assert_eq!(CHANGE_PASSWORD_ROW, 5);
 	assert_eq!(IMPORT_ROW, 6);
 	assert_eq!(EXPORT_ROW, 7);
-	assert_eq!(ROW_COUNT, 8);
-	assert_eq!(CONFIG_ROW_COUNT, 5);
+	assert_eq!(UNLOCKED_ROW_COUNT, 8);
+	assert_eq!(LOCKED_ROW_COUNT, 5);
 }

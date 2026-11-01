@@ -287,7 +287,18 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 			process_pending_save(&mut app);
 			continue;
 		}
-		if event::poll(TICK_RATE)?
+		if app.pending_save {
+			process_pending_save(&mut app);
+			continue;
+		}
+
+		let has_event = event::poll(TICK_RATE)?;
+		maybe_auto_exit(&mut app);
+		if app.should_quit {
+			break;
+		}
+
+		if has_event
 			&& let Event::Key(key) = event::read()?
 		{
 			app.last_activity = Instant::now();
@@ -298,7 +309,7 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 				Screen::Settings => handle_settings_input(&mut app, key),
 			}
 		}
-		maybe_auto_exit(&mut app);
+
 		if app.should_quit {
 			break;
 		}

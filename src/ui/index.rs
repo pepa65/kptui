@@ -5,6 +5,7 @@ use ratatui::{
 	text::{Line, Span},
 	widgets::{Block, Borders, Cell, Padding, Paragraph, Row, Table},
 };
+use unicode_width::UnicodeWidthStr;
 
 use crate::app::App;
 use crate::db::Entry;
@@ -95,6 +96,9 @@ pub fn draw_index(frame: &mut Frame, app: &mut App) {
 			.border_style(Style::default().fg(app.theme.border))
 			.title(Span::styled(title, Style::default().fg(app.theme.error))),
 	);
-	frame.set_cursor_position((query_area.x + 2 + input_text.chars().count() as u16, query_area.y + 1));
+	let cursor_column = UnicodeWidthStr::width(input_text.as_str());
+	let cursor_x = query_area.x.saturating_add(2).saturating_add(u16::try_from(cursor_column).unwrap_or(u16::MAX));
+	let cursor_y = query_area.y.saturating_add(1);
+	frame.set_cursor_position((cursor_x, cursor_y));
 	frame.render_widget(input, query_area);
 }

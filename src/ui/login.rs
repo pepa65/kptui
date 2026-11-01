@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use ratatui::{
 	Frame,
 	layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
@@ -32,7 +34,7 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 	let input_area = horizontal[1];
 
 	// Calculate available input characters
-	app.max_len = (input_area.width - 2) as usize;
+	app.max_len = input_area.width.saturating_sub(2) as usize;
 
 	let missing = database_missing(app);
 
@@ -54,11 +56,11 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 		(version_title.as_deref().unwrap_or(""), BoxContent::Masked(&app.password))
 	};
 
-	let input_text = match content {
-		BoxContent::Masked(buf) => "•".repeat(buf.chars().count()),
-		BoxContent::Static(text) => text.to_string(),
+	let input_text: Cow<'_, str> = match content {
+		BoxContent::Masked(buf) => Cow::Owned("•".repeat(buf.chars().count())),
+		BoxContent::Static(text) => Cow::Borrowed(text),
 	};
-	let input = Paragraph::new(input_text).alignment(Alignment::Center).block(
+	let input = Paragraph::new(input_text.as_ref()).alignment(Alignment::Center).block(
 		Block::default()
 			.borders(Borders::ALL)
 			.border_style(Style::default().fg(app.theme.border))
@@ -147,12 +149,18 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 		.style(claws_style);
 		frame.render_widget(logo, logo_area);
 	}
-	let path = app.config.default_database.clone().unwrap_or_else(default_new_database_path);
-	let filename = Paragraph::new(path.display().to_string()).alignment(Alignment::Center).style(Style::default().fg(app.theme.warning));
+	let default_path;
+	let path = if let Some(path) = app.config.default_database.as_ref() {
+		path
+	} else {
+		default_path = default_new_database_path();
+		&default_path
+	};
+	let filename = Paragraph::new(path.to_string_lossy()).alignment(Alignment::Center).style(Style::default().fg(app.theme.warning));
 	frame.render_widget(filename, filename_area);
 	frame.render_widget(input, input_area);
 	if let Some(error) = &app.login_error {
-		let error_area = Rect { x: input_area.x, y: input_area.y + input_area.height, width: input_area.width, height: 3 };
+		let error_area = Rect { x: input_area.x, y: input_area.y.saturating_add(input_area.height), width: input_area.width, height: 3 };
 
 		let error_text = Paragraph::new(error.as_str())
 			.alignment(Alignment::Center)
@@ -161,14 +169,14 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 
 		frame.render_widget(error_text, error_area);
 	} else if app.creating_database {
-		let hint_area = Rect { x: input_area.x, y: input_area.y + input_area.height, width: input_area.width, height: 2 };
+		let hint_area = Rect { x: input_area.x, y: input_area.y.saturating_add(input_area.height), width: input_area.width, height: 2 };
 		let hint = Paragraph::new(vec![Line::from(format!("will create {}", path.display())), Line::from("[Enter] Confirm  [Esc] Cancel")])
 			.alignment(Alignment::Center)
 			.style(Style::new().fg(app.theme.warning));
 
 		frame.render_widget(hint, hint_area);
 	} else if missing {
-		let hint_area = Rect { x: input_area.x, y: input_area.y + input_area.height, width: input_area.width, height: 1 };
+		let hint_area = Rect { x: input_area.x, y: input_area.y.saturating_add(input_area.height), width: input_area.width, height: 1 };
 
 		let hint = Paragraph::new("[c] Create database  [^c] Config  [Esc] Quit")
 			.alignment(Alignment::Center)
@@ -176,7 +184,7 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 
 		frame.render_widget(hint, hint_area);
 	} else {
-		let hint_area = Rect { x: input_area.x, y: input_area.y + input_area.height, width: input_area.width, height: 1 };
+		let hint_area = Rect { x: input_area.x, y: input_area.y.saturating_add(input_area.height), width: input_area.width, height: 1 };
 
 		let hint = Paragraph::new("Enter master password  [^c] Config  [Esc] Quit")
 			.alignment(Alignment::Center)
@@ -188,26 +196,29 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 	// Keep cursor inside the box, but only while actually typing into it.
 	let typed_len = if app.creating_database {
 		if app.confirming_new_db_password {
-			app.new_db_confirm.chars().count() as u16
+			app.new_db_confirm.chars().count()
 		} else {
-			app.password.chars().count() as u16
+			app.password.chars().count()
 		}
 	} else if missing {
 		// Static prompt, nothing to place a cursor in.
 		return;
 	} else {
-		app.password.chars().count() as u16
+		app.password.chars().count()
 	};
 
 	let inner = Block::default().borders(Borders::ALL).inner(input_area);
-	let width = inner.width;
-	let len = typed_len;
+	if inner.width == 0 || inner.height == 0 {
+		return;
+	}
 
-	let cursor_offset = if len < width {
-		(width - len) / 2 + len
+	let width = inner.width as usize;
+	let cursor_offset = if typed_len < width {
+		(width - typed_len) / 2 + typed_len
 	} else {
-		width.saturating_sub(1)
+		width - 1
 	};
 
-	frame.set_cursor_position((inner.x + cursor_offset.min(width.saturating_sub(1)), inner.y));
+	let cursor_x = inner.x.saturating_add(cursor_offset as u16);
+	frame.set_cursor_position((cursor_x, inner.y));
 }

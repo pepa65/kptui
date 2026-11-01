@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use ratatui::{
 	Frame,
 	layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -8,22 +10,19 @@ use ratatui::{
 
 use crate::app::App;
 use crate::input::settings::{
-	AUTO_EXIT_ROW, CHANGE_PASSWORD_ROW, CONFIG_ROW_COUNT, DATABASE_ROW, EXPORT_ROW, IMPORT_ROW, ITERATIONS_ROW, KEYFILE_ROW, THEME_ROW,
+	AUTO_EXIT_ROW, CHANGE_PASSWORD_ROW, DATABASE_ROW, EXPORT_ROW, IMPORT_ROW, ITERATIONS_ROW, KEYFILE_ROW, THEME_ROW,
 };
 use crate::util::wrap_help_items;
 
-fn centered_cursor_x(input_area: Rect, typed_len: u16) -> u16 {
+fn centered_cursor_x(input_area: Rect, typed_len: usize) -> u16 {
 	let inner = Block::default().borders(Borders::ALL).inner(input_area);
 	if inner.width == 0 {
 		return inner.x;
 	}
 
-	let offset = if typed_len < inner.width {
-		(inner.width - typed_len) / 2 + typed_len
-	} else {
-		inner.width - 1
-	};
-	inner.x + offset.min(inner.width - 1)
+	let width = inner.width as usize;
+	let offset = if typed_len < width { (width - typed_len) / 2 + typed_len } else { width - 1 };
+	inner.x.saturating_add(offset.min(width - 1) as u16)
 }
 
 fn nav_help_items(slim_mode: bool) -> &'static [&'static str] {
@@ -72,7 +71,7 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 
 	let help_width = full_area.width.saturating_sub(2);
 	let help_lines = wrap_help_items(help_items, help_width);
-	let help_height = help_lines.len() as u16;
+	let help_height = u16::try_from(help_lines.len()).unwrap_or(u16::MAX);
 
 	let vertical = Layout::default()
 		.direction(Direction::Vertical)
@@ -151,25 +150,25 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 
 	// Overlay the FieldEditor on the selected editable setting.
 	if editing_field
-		&& selected <= CONFIG_ROW_COUNT
+		&& selected <= AUTO_EXIT_ROW
 		&& let Some(editor) = app.field_editor.as_ref()
 	{
 		let list_area = vertical[0];
 
 		// The List has a one-cell border and one-cell horizontal padding.
 		// Each setting occupies three rows: label, value/editor, blank
-		let value_y = list_area.y + 2 + selected as u16 * 3;
-
-		let editor_x = list_area.x + 2;
+		let value_y = list_area.y.saturating_add(2).saturating_add(u16::try_from(selected.saturating_mul(3)).unwrap_or(u16::MAX));
+		let editor_x = list_area.x.saturating_add(2);
 		let editor_width = list_area.width.saturating_sub(3);
-
 		if editor_width > 0 {
 			let (visible, cursor_column) = editor.single_line_view(editor_width as usize);
 			let field_area = Rect { x: editor_x, y: value_y, width: editor_width, height: 1 };
 			frame.render_widget(Clear, field_area);
 			frame.render_widget(Paragraph::new(visible.as_str()).style(normal), field_area);
-			let cursor_x = field_area.x + cursor_column as u16;
-			frame.set_cursor_position((cursor_x, field_area.y));
+			if cursor_column < editor_width as usize {
+				let cursor_x = field_area.x.saturating_add(u16::try_from(cursor_column).unwrap_or(u16::MAX));
+				frame.set_cursor_position((cursor_x, field_area.y));
+			}
 		}
 	}
 
@@ -189,7 +188,7 @@ fn draw_change_password(frame: &mut Frame, app: &mut App) {
 
 	let help_width = full_area.width.saturating_sub(2);
 	let help_lines = wrap_help_items(change_password_help_items(app.slim_mode), help_width);
-	let help_height = help_lines.len() as u16;
+	let help_height = u16::try_from(help_lines.len()).unwrap_or(u16::MAX);
 
 	let vertical = Layout::default()
 		.direction(Direction::Vertical)
@@ -204,7 +203,7 @@ fn draw_change_password(frame: &mut Frame, app: &mut App) {
 		.split(input_row);
 
 	let input_area = horizontal[1];
-	app.max_len = (input_area.width - 2) as usize;
+	app.max_len = input_area.width.saturating_sub(2) as usize;
 
 	let title = match app.password_change_step {
 		crate::app::PasswordChangeStep::Current => Span::styled(" Current master password ", Style::default().fg(app.theme.error)),
@@ -224,23 +223,24 @@ fn draw_change_password(frame: &mut Frame, app: &mut App) {
 
 	frame.render_widget(input, input_area);
 
-	let hint_area = Rect { x: input_area.x, y: input_area.y + input_area.height, width: input_area.width, height: 1 };
+	let hint_area = Rect { x: input_area.x, y: input_area.y.saturating_add(input_area.height), width: input_area.width, height: 1 };
 
 	let default_hint = match app.password_change_step {
 		crate::app::PasswordChangeStep::Current => "verify current master password",
 		crate::app::PasswordChangeStep::New | crate::app::PasswordChangeStep::ConfirmNew => "this re-encrypts the vault with the new password",
 	};
-	let hint_text = app.status.clone().unwrap_or_else(|| default_hint.to_string());
+	let hint_text = app.status.as_deref().unwrap_or(default_hint);
 	let hint_style = if app.status.is_some() { Style::new().fg(app.theme.error) } else { Style::new().fg(app.theme.warning) };
 
 	let hint = Paragraph::new(hint_text).alignment(Alignment::Center).style(hint_style);
 
 	frame.render_widget(hint, hint_area);
 
-	let typed_len = buf.chars().count() as u16;
+	let typed_len = buf.chars().count();
 	let cursor_x = centered_cursor_x(input_area, typed_len);
-	frame.set_cursor_position((cursor_x, input_area.y + 1));
-
+	if input_area.height > 1 {
+		frame.set_cursor_position((cursor_x, input_area.y.saturating_add(1)));
+	}
 	let accent = Style::new().fg(app.theme.accent);
 	let help_text = help_lines.iter().map(|line| format!("  {line}")).collect::<Vec<_>>().join("\n");
 	frame.render_widget(Paragraph::new(help_text).style(accent), vertical[3]);
@@ -251,7 +251,7 @@ fn draw_change_keyfile(frame: &mut Frame, app: &mut App) {
 
 	let help_width = full_area.width.saturating_sub(2);
 	let help_lines = wrap_help_items(change_password_help_items(app.slim_mode), help_width);
-	let help_height = help_lines.len() as u16;
+	let help_height = u16::try_from(help_lines.len()).unwrap_or(u16::MAX);
 
 	let vertical = Layout::default()
 		.direction(Direction::Vertical)
@@ -264,41 +264,43 @@ fn draw_change_keyfile(frame: &mut Frame, app: &mut App) {
 		.split(vertical[1]);
 
 	let input_area = horizontal[1];
-	app.max_len = (input_area.width - 2) as usize;
+	app.max_len = input_area.width.saturating_sub(2) as usize;
 
 	let (title, display, typed_len) = match app.keyfile_change_step {
 		crate::app::KeyfileChangeStep::Current => (
 			Span::styled(" Current master password ", Style::default().fg(app.theme.error)),
-			"•".repeat(app.current_password_buffer.chars().count()),
-			app.current_password_buffer.chars().count() as u16,
+			Cow::Owned("•".repeat(app.current_password_buffer.chars().count())),
+			app.current_password_buffer.chars().count(),
 		),
 		crate::app::KeyfileChangeStep::Path => (
 			Span::styled(" New keyfile path (empty to remove) ", Style::default().fg(app.theme.error)),
-			app.keyfile_path_buffer.clone(),
-			app.keyfile_path_buffer.chars().count() as u16,
+			Cow::Borrowed(app.keyfile_path_buffer.as_str()),
+			app.keyfile_path_buffer.chars().count(),
 		),
 	};
 
-	let input = Paragraph::new(display)
+	let input = Paragraph::new(display.as_ref())
 		.alignment(Alignment::Center)
 		.block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(app.theme.border)).title(title));
 
 	frame.render_widget(input, input_area);
 
-	let hint_area = Rect { x: input_area.x, y: input_area.y + input_area.height, width: input_area.width, height: 1 };
+	let hint_area = Rect { x: input_area.x, y: input_area.y.saturating_add(input_area.height), width: input_area.width, height: 1 };
 
 	let default_hint = match app.keyfile_change_step {
 		crate::app::KeyfileChangeStep::Current => "verify current master password using the current keyfile",
 		crate::app::KeyfileChangeStep::Path => "re-encrypts the vault with the new keyfile",
 	};
 
-	let hint_text = app.status.clone().unwrap_or_else(|| default_hint.to_string());
+	let hint_text = app.status.as_deref().unwrap_or(default_hint);
 	let hint_style = if app.status.is_some() { Style::new().fg(app.theme.error) } else { Style::new().fg(app.theme.warning) };
 
 	frame.render_widget(Paragraph::new(hint_text).alignment(Alignment::Center).style(hint_style), hint_area);
 
 	let cursor_x = centered_cursor_x(input_area, typed_len);
-	frame.set_cursor_position((cursor_x, input_area.y + 1));
+	if input_area.height > 1 {
+		frame.set_cursor_position((cursor_x, input_area.y.saturating_add(1)));
+	}
 
 	let accent = Style::new().fg(app.theme.accent);
 	let help_text = help_lines.iter().map(|line| format!("  {line}")).collect::<Vec<_>>().join("\n");
@@ -311,7 +313,7 @@ fn draw_import(frame: &mut Frame, app: &mut App) {
 
 	let help_width = full_area.width.saturating_sub(2);
 	let help_lines = wrap_help_items(import_help_items(app.slim_mode), help_width);
-	let help_height = help_lines.len() as u16;
+	let help_height = u16::try_from(help_lines.len()).unwrap_or(u16::MAX);
 
 	let vertical = Layout::default()
 		.direction(Direction::Vertical)
@@ -326,7 +328,7 @@ fn draw_import(frame: &mut Frame, app: &mut App) {
 		.split(input_row);
 
 	let input_area = horizontal[1];
-	app.max_len = (input_area.width - 2) as usize;
+	app.max_len = input_area.width.saturating_sub(2) as usize;
 
 	let masked = matches!(app.import_step, crate::app::ImportStep::KdbxPassword);
 
@@ -340,30 +342,36 @@ fn draw_import(frame: &mut Frame, app: &mut App) {
 		crate::app::ImportStep::KdbxPassword => &app.import_kdbx_password_buffer,
 	};
 
-	let display_text = if masked { "•".repeat(buf.chars().count()) } else { buf.clone() };
+	let display_text: Cow<'_, str> = if masked {
+		Cow::Owned("•".repeat(buf.chars().count()))
+	} else {
+		Cow::Borrowed(buf.as_str())
+	};
 
-	let input = Paragraph::new(display_text)
+	let input = Paragraph::new(display_text.as_ref())
 		.alignment(Alignment::Center)
 		.block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(app.theme.border)).title(title));
 
 	frame.render_widget(input, input_area);
 
-	let hint_area = Rect { x: input_area.x, y: input_area.y + input_area.height, width: input_area.width, height: 1 };
+	let hint_area = Rect { x: input_area.x, y: input_area.y.saturating_add(input_area.height), width: input_area.width, height: 1 };
 
 	let default_hint = match app.import_step {
 		crate::app::ImportStep::Path => "only Name, User, Password, URL, TOTP and Notes are imported",
 		crate::app::ImportStep::KdbxPassword => "that file's master password (not for this vault!)",
 	};
-	let hint_text = app.status.clone().unwrap_or_else(|| default_hint.to_string());
+	let hint_text = app.status.as_deref().unwrap_or(default_hint);
 	let hint_style = if app.status.is_some() { Style::new().fg(app.theme.error) } else { Style::new().fg(app.theme.warning) };
 
 	let hint = Paragraph::new(hint_text).alignment(Alignment::Center).style(hint_style);
 
 	frame.render_widget(hint, hint_area);
 
-	let typed_len = buf.chars().count() as u16;
+	let typed_len = buf.chars().count();
 	let cursor_x = centered_cursor_x(input_area, typed_len);
-	frame.set_cursor_position((cursor_x, input_area.y + 1));
+	if input_area.height > 1 {
+		frame.set_cursor_position((cursor_x, input_area.y.saturating_add(1)));
+	}
 
 	let accent = Style::new().fg(app.theme.accent);
 	let help_text = help_lines.iter().map(|line| format!("  {line}")).collect::<Vec<_>>().join("\n");
@@ -375,7 +383,7 @@ fn draw_export(frame: &mut Frame, app: &mut App) {
 
 	let help_width = full_area.width.saturating_sub(2);
 	let help_lines = wrap_help_items(export_help_items(app.slim_mode), help_width);
-	let help_height = help_lines.len() as u16;
+	let help_height = u16::try_from(help_lines.len()).unwrap_or(u16::MAX);
 
 	let vertical = Layout::default()
 		.direction(Direction::Vertical)
@@ -390,23 +398,23 @@ fn draw_export(frame: &mut Frame, app: &mut App) {
 		.split(input_row);
 
 	let input_area = horizontal[1];
-	app.max_len = (input_area.width - 2) as usize;
+	app.max_len = input_area.width.saturating_sub(2) as usize;
 
 	let title = match app.export_step {
 		crate::app::ExportStep::Path => " Export to file (.kdbx/.csv/.json) ",
 		crate::app::ExportStep::Confirm => " Confirm export ",
 	};
 
-	let input = Paragraph::new(app.export_path_buffer.clone())
+	let input = Paragraph::new(app.export_path_buffer.as_str())
 		.alignment(Alignment::Center)
 		.block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(app.theme.border)).title(title));
 
 	frame.render_widget(input, input_area);
 
-	let hint_area = Rect { x: input_area.x, y: input_area.y + input_area.height, width: input_area.width, height: 1 };
+	let hint_area = Rect { x: input_area.x, y: input_area.y.saturating_add(input_area.height), width: input_area.width, height: 1 };
 
 	let default_hint = match app.export_step {
-		crate::app::ExportStep::Path => "only Name, User, Password, URL, and TOTP are exported".to_string(),
+		crate::app::ExportStep::Path => "only Name, User, Password, URL, and TOTP are exported",
 		crate::app::ExportStep::Confirm => {
 			let path = app.pending_export_path.as_deref();
 			let plaintext = path
@@ -416,23 +424,25 @@ fn draw_export(frame: &mut Frame, app: &mut App) {
 			let overwrite = path.map(|p| p.exists()).unwrap_or(false);
 
 			match (plaintext, overwrite) {
-				(true, true) => "overwriting an existing file with all passwords in PLAINTEXT — [Enter] confirm".to_string(),
-				(true, false) => "writing all passwords in PLAINTEXT to disk — [Enter] Confirm".to_string(),
-				(false, true) => "overwriting an existing file — [Enter] Confirm".to_string(),
-				(false, false) => "[Enter] Confirm".to_string(),
+				(true, true) => "overwriting an existing file with all passwords in PLAINTEXT — [Enter] confirm",
+				(true, false) => "writing all passwords in PLAINTEXT to disk — [Enter] Confirm",
+				(false, true) => "overwriting an existing file — [Enter] Confirm",
+				(false, false) => "[Enter] Confirm",
 			}
 		}
 	};
-	let hint_text = app.status.clone().unwrap_or(default_hint);
+	let hint_text = app.status.as_deref().unwrap_or(default_hint);
 	let hint_style = if app.status.is_some() { Style::new().fg(app.theme.error) } else { Style::new().fg(app.theme.warning) };
 
 	let hint = Paragraph::new(hint_text).alignment(Alignment::Center).style(hint_style);
 
 	frame.render_widget(hint, hint_area);
 
-	let typed_len = app.export_path_buffer.chars().count() as u16;
+	let typed_len = app.export_path_buffer.chars().count();
 	let cursor_x = centered_cursor_x(input_area, typed_len);
-	frame.set_cursor_position((cursor_x, input_area.y + 1));
+	if input_area.height > 1 {
+		frame.set_cursor_position((cursor_x, input_area.y.saturating_add(1)));
+	}
 
 	let accent = Style::new().fg(app.theme.accent);
 	let help_text = help_lines.iter().map(|line| format!("  {line}")).collect::<Vec<_>>().join("\n");
@@ -444,7 +454,7 @@ fn draw_theme_picker(frame: &mut Frame, app: &mut App) {
 
 	let help_width = full_area.width.saturating_sub(2);
 	let help_lines = wrap_help_items(export_help_items(app.slim_mode), help_width);
-	let help_height = help_lines.len() as u16;
+	let help_height = u16::try_from(help_lines.len()).unwrap_or(u16::MAX);
 
 	let vertical = Layout::default()
 		.direction(Direction::Vertical)
@@ -467,7 +477,7 @@ fn draw_theme_picker(frame: &mut Frame, app: &mut App) {
 			let marker = if is_active { " ◉" } else { " ○" };
 			let marker_style = if is_active { accent } else { normal };
 
-			ListItem::new(Line::from(vec![Span::styled(format!("{marker} "), marker_style), Span::styled(name.clone(), normal)]))
+			ListItem::new(Line::from(vec![Span::styled(format!("{marker} "), marker_style), Span::styled(name.as_str(), normal)]))
 		})
 		.collect();
 

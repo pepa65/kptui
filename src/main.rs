@@ -11,7 +11,7 @@ mod util;
 use std::fs::File;
 use std::io::{self, IsTerminal, Read, Write, stdout};
 use std::os::fd::AsFd;
-use std::process::exit;
+use std::process::ExitCode;
 use zeroize::Zeroizing;
 
 enum Command {
@@ -21,14 +21,13 @@ enum Command {
 }
 
 fn read_stdin() -> io::Result<Zeroizing<String>> {
-	const MAX: usize = 4096;
 	if io::stdin().is_terminal() {
 		return Ok(Zeroizing::new(String::with_capacity(crate::input::SECRET_CAP)));
 	}
 
 	let mut file = File::from(io::stdin().as_fd().try_clone_to_owned()?);
 	// Fixed capacity up front: a growing Vec would leave unwiped old allocations behind.
-	let mut bytes: Zeroizing<Vec<u8>> = Zeroizing::new(Vec::with_capacity(MAX));
+	let mut bytes: Zeroizing<Vec<u8>> = Zeroizing::new(Vec::with_capacity(crate::input::SECRET_CAP));
 	let mut byte = Zeroizing::new([0u8; 1]);
 	loop {
 		match file.read(&mut *byte) {
@@ -38,7 +37,7 @@ fn read_stdin() -> io::Result<Zeroizing<String>> {
 					break;
 				}
 
-				if bytes.len() >= MAX {
+				if bytes.len() >= crate::input::SECRET_CAP {
 					return Err(io::Error::new(io::ErrorKind::InvalidData, "password too long"));
 				}
 
@@ -70,10 +69,28 @@ fn parse_args(args: &[String]) -> Result<Command, String> {
 	}
 }
 
-fn reset_terminal() {
+fn reset_terminal() -> io::Result<()> {
 	let mut out = stdout();
-	out.write_all(b"\x1b[H\x1b[2J\x1b[3J").unwrap();
-	out.flush().unwrap();
+	out.write_all(b"\x1b[H\x1b[2J\x1b[3J")?;
+	out.flush()
+}
+
+struct TerminalGuard {
+	terminal: ratatui::DefaultTerminal,
+}
+
+impl TerminalGuard {
+	fn new() -> Self {
+		Self { terminal: ratatui::init() }
+	}
+}
+
+impl Drop for TerminalGuard {
+	fn drop(&mut self) {
+		let _ = self.terminal.clear();
+		let _ = ratatui::try_restore();
+		let _ = reset_terminal();
+	}
 }
 
 #[cfg(target_os = "linux")]
@@ -86,7 +103,7 @@ fn harden() {
 #[cfg(not(target_os = "linux"))]
 fn harden() {}
 
-fn main() {
+fn main() -> std::process::ExitCode {
 	harden();
 	let args: Vec<String> = std::env::args().skip(1).collect();
 	let command = match parse_args(&args) {
@@ -94,7 +111,7 @@ fn main() {
 		Err(error) => {
 			eprintln!("kptui: {error}");
 			eprintln!("Usage: {} [slim | version | help]", env!("CARGO_PKG_NAME"));
-			exit(2);
+			return ExitCode::from(2);
 		}
 	};
 
@@ -102,12 +119,12 @@ fn main() {
 		Command::Help => {
 			println!("{} {} - {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"), env!("CARGO_PKG_DESCRIPTION"));
 			println!("Usage:  {} [slim | version | help]", env!("CARGO_PKG_NAME"));
-			exit(0);
+			ExitCode::SUCCESS
 		}
 
 		Command::Version => {
 			println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
-			exit(0);
+			ExitCode::SUCCESS
 		}
 
 		Command::Tui(slim) => {
@@ -115,18 +132,18 @@ fn main() {
 				Ok(password) => password,
 				Err(err) => {
 					eprintln!("kptui: couldn't read password from stdin: {err}");
-					exit(1);
+					return ExitCode::FAILURE;
 				}
 			};
 
-			let mut terminal = ratatui::init();
-			let result = app::run(&mut terminal, slim, password);
-			let _ = terminal.clear();
-			ratatui::restore();
-			reset_terminal();
+			let mut guard = TerminalGuard::new();
+			let result = app::run(&mut guard.terminal, slim, password);
+			drop(guard);
 			if let Err(err) = result {
 				eprintln!("kptui: {err}");
-				std::process::exit(1);
+				ExitCode::FAILURE
+			} else {
+				ExitCode::SUCCESS
 			}
 		}
 	}

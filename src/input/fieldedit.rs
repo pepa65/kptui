@@ -33,9 +33,9 @@ pub enum FieldMode {
 ///
 /// There is deliberately no undo/redo history, clipboard buffer, search
 /// state, or other secondary copy of the text.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct FieldEditor {
-	text: String,
+	text: Zeroizing<Vec<u8>>,
 	cursor: usize,
 	preferred_column: Option<usize>,
 	mode: FieldMode,
@@ -43,13 +43,13 @@ pub struct FieldEditor {
 
 impl Drop for FieldEditor {
 	fn drop(&mut self) {
-		self.text.zeroize();
+		self.wipe_spare();
 	}
 }
 
 impl Default for FieldEditor {
 	fn default() -> Self {
-		Self { text: String::new(), cursor: 0, preferred_column: None, mode: FieldMode::SingleLine }
+		Self { text: Zeroizing::new(Vec::new()), cursor: 0, preferred_column: None, mode: FieldMode::SingleLine }
 	}
 }
 
@@ -69,19 +69,24 @@ impl FieldEditor {
 	/// Creates an editor with an explicitly selected mode.
 	pub fn with_mode(text: impl Into<String>, mode: FieldMode) -> Self {
 		let text = text.into();
-		Self { text, cursor: 0, preferred_column: None, mode }
+		Self { text: Zeroizing::new(text.into_bytes()), cursor: 0, preferred_column: None, mode }
+	}
+
+	fn as_str(&self) -> &str {
+		std::str::from_utf8(&self.text).expect("FieldEditor contains valid UTF-8")
 	}
 
 	pub fn cursor_display_column(&self) -> usize {
-		UnicodeWidthStr::width(&self.text[..self.cursor])
+		UnicodeWidthStr::width(&self.as_str()[..self.cursor])
 	}
 
 	pub fn text(&self) -> &str {
-		&self.text
+		self.as_str()
 	}
 
 	pub fn into_text(mut self) -> Zeroizing<String> {
-		Zeroizing::new(std::mem::take(&mut self.text))
+		let bytes = std::mem::take(&mut *self.text);
+		Zeroizing::new(String::from_utf8(bytes).expect("FieldEditor contains valid UTF-8"))
 	}
 
 	pub fn cursor(&self) -> usize {
@@ -103,19 +108,16 @@ impl FieldEditor {
 			return;
 		}
 		let new_cap = (self.text.len() + additional).max(self.text.capacity() * 2).max(256);
-		let mut bigger = String::with_capacity(new_cap);
-		bigger.push_str(&self.text);
-		self.text.zeroize(); // wipes the whole old allocation
-		self.text = bigger;
+		let mut bigger = Vec::with_capacity(new_cap);
+		bigger.extend_from_slice(&self.text);
+		self.wipe_spare();
+		self.text.zeroize();
+		*self.text = bigger;
 	}
 
-	/// Zeroes the unused bytes after `len()`, where deleted text would linger.
 	fn wipe_spare(&mut self) {
-		// SAFETY: only bytes beyond len() are written; the length and the
-		// initialized content (so UTF-8 validity) are untouched.
-		let v = unsafe { self.text.as_mut_vec() };
-		for b in v.spare_capacity_mut() {
-			b.write(0);
+		for byte in self.text.spare_capacity_mut() {
+			byte.write(0);
 		}
 	}
 
@@ -124,9 +126,14 @@ impl FieldEditor {
 			return;
 		}
 
-		self.reserve(ch.len_utf8());
-		self.text.insert(self.cursor, ch);
-		self.cursor += ch.len_utf8();
+		let mut encoded = Zeroizing::new([0u8; 4]);
+		let bytes = ch.encode_utf8(&mut *encoded).as_bytes();
+		self.reserve(bytes.len());
+		let old_len = self.text.len();
+		self.text.resize(old_len + bytes.len(), 0);
+		self.text.copy_within(self.cursor..old_len, self.cursor + bytes.len());
+		self.text[self.cursor..self.cursor + bytes.len()].copy_from_slice(bytes);
+		self.cursor += bytes.len();
 		self.preferred_column = None;
 	}
 
@@ -203,7 +210,7 @@ impl FieldEditor {
 			return;
 		}
 
-		let start = previous_char_boundary(&self.text, self.cursor);
+		let start = previous_char_boundary(self.as_str(), self.cursor);
 		self.text.drain(start..self.cursor);
 		self.wipe_spare();
 		self.cursor = start;
@@ -215,7 +222,7 @@ impl FieldEditor {
 			return;
 		}
 
-		let end = next_char_boundary(&self.text, self.cursor);
+		let end = next_char_boundary(self.as_str(), self.cursor);
 		self.text.drain(self.cursor..end);
 		self.wipe_spare();
 		self.preferred_column = None;
@@ -226,7 +233,7 @@ impl FieldEditor {
 			return;
 		}
 
-		self.cursor = previous_char_boundary(&self.text, self.cursor);
+		self.cursor = previous_char_boundary(self.as_str(), self.cursor);
 		self.preferred_column = None;
 	}
 
@@ -235,7 +242,7 @@ impl FieldEditor {
 			return;
 		}
 
-		self.cursor = next_char_boundary(&self.text, self.cursor);
+		self.cursor = next_char_boundary(self.as_str(), self.cursor);
 		self.preferred_column = None;
 	}
 
@@ -243,7 +250,7 @@ impl FieldEditor {
 		if self.is_single_line() {
 			self.cursor = 0;
 		} else {
-			self.cursor = line_start(&self.text, self.cursor);
+			self.cursor = line_start(self.as_str(), self.cursor);
 		}
 
 		self.preferred_column = None;
@@ -253,7 +260,7 @@ impl FieldEditor {
 		if self.is_single_line() {
 			self.cursor = self.text.len();
 		} else {
-			self.cursor = line_end(&self.text, self.cursor);
+			self.cursor = line_end(self.as_str(), self.cursor);
 		}
 
 		self.preferred_column = None;
@@ -306,7 +313,7 @@ impl FieldEditor {
 		let mut start_byte = 0;
 		let mut start_column = 0;
 
-		for (byte, ch) in self.text.char_indices() {
+		for (byte, ch) in self.as_str().char_indices() {
 			if start_column >= scroll {
 				start_byte = byte;
 				break;
@@ -319,7 +326,7 @@ impl FieldEditor {
 		let mut end_byte = start_byte;
 		let mut visible_width = 0;
 
-		for ch in self.text[start_byte..].chars() {
+		for ch in self.as_str()[start_byte..].chars() {
 			let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
 
 			if visible_width + ch_width > width {
@@ -331,22 +338,22 @@ impl FieldEditor {
 		}
 
 		// One exact-size allocation, wiped when dropped.
-		let visible = Zeroizing::new(self.text[start_byte..end_byte].to_owned());
+		let visible = Zeroizing::new(self.as_str()[start_byte..end_byte].to_owned());
 		let cursor_column = self.cursor_display_column().saturating_sub(start_column);
 
 		(visible, cursor_column.min(width))
 	}
 
 	fn move_vertical(&mut self, direction: i32) -> bool {
-		let current_start = line_start(&self.text, self.cursor);
-		let current_end = line_end(&self.text, self.cursor);
-		let current_column = self.preferred_column.unwrap_or_else(|| self.text[current_start..self.cursor].chars().count());
+		let current_start = line_start(self.as_str(), self.cursor);
+		let current_end = line_end(self.as_str(), self.cursor);
+		let current_column = self.preferred_column.unwrap_or_else(|| self.as_str()[current_start..self.cursor].chars().count());
 		let target_start = if direction < 0 {
 			if current_start == 0 {
 				return false;
 			}
 
-			line_start(&self.text, current_start - 1)
+			line_start(self.as_str(), current_start - 1)
 		} else {
 			if current_end == self.text.len() {
 				return false;
@@ -354,8 +361,8 @@ impl FieldEditor {
 
 			current_end + 1
 		};
-		let target_end = line_end(&self.text, target_start);
-		let target_line = &self.text[target_start..target_end];
+		let target_end = line_end(self.as_str(), target_start);
+		let target_line = &self.as_str()[target_start..target_end];
 		let target_column = target_line.chars().take(current_column).map(char::len_utf8).sum::<usize>();
 		self.cursor = target_start + target_column;
 		self.preferred_column = Some(current_column);

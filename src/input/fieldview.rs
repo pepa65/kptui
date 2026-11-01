@@ -55,7 +55,9 @@ fn wrap_line(line: &str, base: usize, width: usize, out: &mut Vec<Range<usize>>)
 pub fn cursor_position(text: &str, ranges: &[Range<usize>], cursor: usize) -> (usize, usize) {
 	let row = ranges.iter().rposition(|r| r.start <= cursor).unwrap_or(0);
 	let start = ranges.get(row).map_or(0, |r| r.start);
-	(row, UnicodeWidthStr::width(&text[start..cursor.max(start)]))
+	let end = cursor.max(start);
+	let column = text.get(start..end).map(UnicodeWidthStr::width).unwrap_or(0);
+	(row, column)
 }
 
 #[cfg(test)]

@@ -66,12 +66,12 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) {
 		return;
 	};
 
-	let name = entry.name.clone();
+	let name = entry.name.as_str();
 	let user = entry.user.as_str();
-	let url = entry.url.clone();
+	let url = entry.url.as_str();
 	let totp_raw = entry.totp.as_str();
 	let notes = entry.notes.as_str();
-	let last_modified = entry.date_last_modify.clone();
+	let last_modified = entry.date_last_modify.as_str();
 	let password = entry.password.as_str();
 	let password_is_set = !password.is_empty();
 	let is_new_entry = app.edit_target.is_none();
@@ -97,20 +97,20 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) {
 	let help_items = if editing_field { field_help_items(app.slim_mode, selected == NOTES_INDEX) } else { nav_help_items(app.slim_mode) };
 	let help_width = full_area.width.saturating_sub(2);
 	let help_lines = wrap_help_items(help_items, help_width);
-	let help_height = help_lines.len() as u16;
+	let help_height = u16::try_from(help_lines.len()).unwrap_or(u16::MAX);
 	let vertical = Layout::default()
 		.direction(Direction::Vertical)
 		.constraints([Constraint::Fill(1), Constraint::Length(help_height)])
 		.split(full_area);
 	let list_area = vertical[0];
 	let inner = list_area.inner(Margin { horizontal: 1, vertical: 1 });
-	let notes_label_y = inner.y + 6;
-	let notes_label_area = Rect { x: inner.x + 1, y: notes_label_y, width: inner.width.saturating_sub(1), height: 1 };
+	let notes_label_y = inner.y.saturating_add(6);
+	let notes_label_area = Rect { x: inner.x.saturating_add(1), y: notes_label_y, width: inner.width.saturating_sub(1), height: 1 };
 	let notes_area = Rect {
-		x: inner.x + 1,
-		y: notes_label_y + 1,
+		x: inner.x.saturating_add(1),
+		y: notes_label_y.saturating_add(1),
 		width: inner.width.saturating_sub(1),
-		height: inner.height.saturating_sub(7).max(1),
+		height: inner.height.saturating_sub(7),
 	};
 	let notes_width = notes_area.width.saturating_sub(1) as usize;
 	let notes_ranges = if notes.is_empty() { Vec::new() } else { wrap_ranges(notes, notes_width) };
@@ -134,12 +134,12 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) {
 	};
 	let styles = [label_style, editing_style, normal, placeholder];
 	let items = vec![
-		compact_field(selected, NAME_INDEX, "Name", &name, vec![], true, styles),
+		compact_field(selected, NAME_INDEX, "Name", name, vec![], true, styles),
 		compact_field(selected, USER_INDEX, "User", user, vec![], true, styles),
 		compact_field(selected, PASSWORD_INDEX, "Password", "", vec![], !password_is_set, styles),
-		compact_field(selected, URL_INDEX, "URL", &url, vec![], true, styles),
+		compact_field(selected, URL_INDEX, "URL", url, vec![], true, styles),
 		compact_field(selected, TOTP_INDEX, "TOTP", "", totp_extra, totp_raw.is_empty(), styles),
-		compact_field(selected, LAST_MODIFIED_INDEX, "Modified", &last_modified, vec![], true, styles),
+		compact_field(selected, LAST_MODIFIED_INDEX, "Modified", last_modified, vec![], true, styles),
 	];
 	let title = if is_new_entry { " New Entry " } else { " Entry " };
 	let list = List::new(items).block(
@@ -160,11 +160,12 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) {
 	// Render the password separately from the List.
 	if password_is_set {
 		let label = "Password: ";
-		let label_width = UnicodeWidthStr::width(label) as u16;
+		let label_width = u16::try_from(UnicodeWidthStr::width(label)).unwrap_or(u16::MAX);
+		let offset = label_width.saturating_add(1);
 		let field_area = Rect {
-			x: inner.x + label_width + 1,
-			y: inner.y + PASSWORD_INDEX as u16,
-			width: inner.width.saturating_sub(label_width + 1),
+			x: inner.x.saturating_add(offset),
+			y: inner.y.saturating_add(PASSWORD_INDEX as u16),
+			width: inner.width.saturating_sub(offset),
 			height: 1,
 		};
 		frame.render_widget(Paragraph::new(password).style(normal), field_area);
@@ -174,11 +175,12 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) {
 	// The otpauth URI/secret is deliberately not rendered while viewing.
 	if let Some((totp_view, _)) = totp_code.as_ref() {
 		let label = "TOTP: ";
-		let label_width = UnicodeWidthStr::width(label) as u16;
+		let label_width = u16::try_from(UnicodeWidthStr::width(label)).unwrap_or(u16::MAX);
+		let offset = label_width.saturating_add(1);
 		let field_area = Rect {
-			x: inner.x + label_width + 1,
-			y: inner.y + TOTP_INDEX as u16,
-			width: inner.width.saturating_sub(label_width + 1),
+			x: inner.x.saturating_add(offset),
+			y: inner.y.saturating_add(TOTP_INDEX as u16),
+			width: inner.width.saturating_sub(offset),
 			height: 1,
 		};
 		frame.render_widget(Paragraph::new(*totp_view).style(normal.bold()), field_area);
@@ -199,11 +201,12 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) {
 			TOTP_INDEX => "TOTP: ",
 			_ => "",
 		};
-		let label_width = UnicodeWidthStr::width(label) as u16;
+		let label_width = u16::try_from(UnicodeWidthStr::width(label)).unwrap_or(u16::MAX);
+		let offset = label_width.saturating_add(1);
 		let field_area = Rect {
-			x: inner.x + label_width + 1,
-			y: inner.y + selected as u16,
-			width: inner.width.saturating_sub(label_width + 1),
+			x: inner.x.saturating_add(offset),
+			y: inner.y.saturating_add(selected as u16),
+			width: inner.width.saturating_sub(offset),
 			height: 1,
 		};
 		frame.render_widget(Clear, field_area);
@@ -212,8 +215,8 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) {
 		let (visible_text, cursor_column) = editor.single_line_view(available_width);
 		frame.render_widget(Paragraph::new(visible_text.as_str()).style(normal), field_area);
 
-		let cursor_x = field_area.x + cursor_column as u16;
-		if cursor_x < field_area.x + field_area.width
+		let cursor_x = field_area.x.saturating_add(u16::try_from(cursor_column).unwrap_or(u16::MAX));
+		if cursor_column < available_width
 			&& let Some(cell) = frame.buffer_mut().cell_mut((cursor_x, field_area.y))
 		{
 			cell.set_style(accent_style);
@@ -232,7 +235,7 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) {
 			let visible_height = notes_area.height as usize;
 			if cursor_row < app.field_editor_scroll {
 				app.field_editor_scroll = cursor_row;
-			} else if cursor_row >= app.field_editor_scroll + visible_height {
+			} else if cursor_row >= app.field_editor_scroll.saturating_add(visible_height) {
 				app.field_editor_scroll = cursor_row - visible_height + 1;
 			}
 			let visible_lines = ranges
@@ -242,10 +245,13 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) {
 				.map(|r| Line::from(Span::styled(&text[r.clone()], normal)))
 				.collect::<Vec<_>>();
 			frame.render_widget(Paragraph::new(visible_lines), notes_area);
-			let x = notes_area.x + cursor_col as u16;
-			let y = notes_area.y + cursor_row.saturating_sub(app.field_editor_scroll) as u16;
-			if let Some(cell) = frame.buffer_mut().cell_mut((x, y)) {
-				cell.set_style(accent_style);
+			let visible_row = cursor_row.saturating_sub(app.field_editor_scroll);
+			if cursor_col < notes_area.width as usize && visible_row < notes_area.height as usize {
+				let x = notes_area.x.saturating_add(u16::try_from(cursor_col).unwrap_or(u16::MAX));
+				let y = notes_area.y.saturating_add(u16::try_from(visible_row).unwrap_or(u16::MAX));
+				if let Some(cell) = frame.buffer_mut().cell_mut((x, y)) {
+					cell.set_style(accent_style);
+				}
 			}
 		}
 	} else {

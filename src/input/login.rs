@@ -29,10 +29,6 @@ pub fn handle_login_input(app: &mut App, key: KeyEvent) {
 	}
 
 	match key.code {
-		KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-			app.screen = Screen::Settings;
-		}
-
 		KeyCode::Char(c) => {
 			app.login_error = None;
 			secret_push(&mut app.password, c);
@@ -179,14 +175,14 @@ pub fn create_database_with_password(app: &mut App) {
 }
 
 pub fn attempt_unlock(app: &mut App) {
-	let Some(path) = app.config.default_database.clone() else {
+	let Some(path) = app.config.default_database.as_deref() else {
 		app.login_error = Some("No default_database set in configfile".to_string());
 		return;
 	};
 
-	match unlock_database(&path, &app.password, app.config.keyfile.as_deref()) {
+	match unlock_database(path, &app.password, app.config.keyfile.as_deref()) {
 		Ok((mut db, key, mut entries)) => {
-			let reconcile_error = reconcile_kdf_iterations(&path, &key, &mut db, &mut entries, app.config.kdf_iterations).err();
+			let reconcile_error = reconcile_kdf_iterations(path, &key, &mut db, &mut entries, app.config.kdf_iterations).err();
 
 			app.entries = entries;
 			app.kdbx = Some(db);

@@ -281,7 +281,7 @@ fn write_to_disk(path: &Path, key: &DatabaseKey, db: &mut Database) -> anyhow::R
 	}
 	let mut file = options.open(&tmp_path).with_context(|| format!("couldn't create {}", tmp_path.display()))?;
 	let result = (|| {
-		db.save(&mut file, key.clone()).map_err(|err| anyhow::anyhow!("failed to write database: {err}"))?;
+		db.save(&mut file, key).map_err(|err| anyhow::anyhow!("failed to write database: {err}"))?;
 		file.sync_all().with_context(|| format!("couldn't sync {}", tmp_path.display()))?;
 		fs::rename(&tmp_path, path).with_context(|| format!("couldn't replace {} with {}", path.display(), tmp_path.display()))?;
 		Ok(())
@@ -318,18 +318,22 @@ pub fn delete_entry(path: &Path, key: &DatabaseKey, db: &mut Database, id: Entry
 }
 
 fn apply_fields(e: &mut EntryMut<'_>, entry: &Entry) {
-	e.set_unprotected(fields::TITLE, entry.name.clone());
-	e.set_protected(fields::USERNAME, entry.user.clone());
-	e.set_protected(fields::PASSWORD, entry.password.clone());
-	e.set_unprotected(fields::URL, entry.url.clone());
-	e.set_protected(fields::OTP, entry.totp.clone());
-	e.set_protected(fields::NOTES, entry.notes.clone());
-	e.times.last_modification = Some(Times::now());
+	let changed =
+		e.update_unprotected(fields::TITLE, &entry.name)
+		| e.update_protected(fields::USERNAME, &entry.user)
+		| e.update_protected(fields::PASSWORD, &entry.password)
+		| e.update_unprotected(fields::URL, &entry.url)
+		| e.update_protected(fields::OTP, &entry.totp)
+		| e.update_protected(fields::NOTES, &entry.notes);
+
+	if changed {
+		e.times.last_modification = Some(Times::now());
+	}
 }
 
 fn sibling_tmp_path(path: &Path) -> PathBuf {
 	let mut name: OsString = path.as_os_str().to_owned();
-	name.push(format!(".tmp-{}-{}", process::id(), SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));
+	name.push(format!(".tmp-{}-{}", process::id(), SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos()));
 	PathBuf::from(name)
 }
 
