@@ -5,7 +5,7 @@
 [![license](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://github.com/pepa65/kptui/blob/main/LICENSE)
 [![downloads](https://img.shields.io/crates/d/kptui.svg)](https://crates.io/crates/kptui)
 
-# kptui 0.35.0
+# kptui 0.35.1
 **Highly secure TUI password manager for [KeePass](https://keepass.info/) KDBX vaults**
 * Compatible with the PassKeeper/KeePass KDBX `.kdb` and `.kdbx` file format.
 * It saves its database file to `KDBX4.1` format, which can be used by:
@@ -46,14 +46,14 @@
 
 ## Usage
 ```
-kptui 0.35.0 - TUI password manager for KeePass vaults
+kptui 0.35.1 - TUI password manager for KeePass vaults
 Usage:  kptui [slim | version | help]
 ```
 
 ## Installing
 ### Download static single-binary
 ```
-wget https://github.com/pepa65/kptui/releases/download/0.35.0/kptui
+wget https://github.com/pepa65/kptui/releases/download/0.35.1/kptui
 sudo mv kptui /usr/local/bin
 sudo chown root:root /usr/local/bin/kptui
 sudo chmod +x /usr/local/bin/kptui
@@ -141,4 +141,5 @@ All fields are optional, as the above are the default values.
 * When the app is open and the vault not locked, secrets are kept in memory!
 * When the app exits, there are no plaintext secrets left anywhere in memory.
 * Using encrypted swap or zram (or no swap) increases security.
+* Booting with kernel cmdline option `init_on_free=1` causes every freed page to get zeroed.
 * On Linux, some extra hardening takes place in the operation of kptui.
