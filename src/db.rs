@@ -318,8 +318,7 @@ pub fn delete_entry(path: &Path, key: &DatabaseKey, db: &mut Database, id: Entry
 }
 
 fn apply_fields(e: &mut EntryMut<'_>, entry: &Entry) {
-	let changed =
-		e.update_unprotected(fields::TITLE, &entry.name)
+	let changed = e.update_unprotected(fields::TITLE, &entry.name)
 		| e.update_protected(fields::USERNAME, &entry.user)
 		| e.update_protected(fields::PASSWORD, &entry.password)
 		| e.update_unprotected(fields::URL, &entry.url)

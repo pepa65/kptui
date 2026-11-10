@@ -491,10 +491,7 @@ fn commit_password_change(app: &mut App) {
 		return;
 	}
 
-	let new_password = std::mem::replace(
-		&mut app.new_password_buffer,
-		zeroize::Zeroizing::new(String::with_capacity(crate::input::SECRET_CAP)),
-	);
+	let new_password = std::mem::replace(&mut app.new_password_buffer, zeroize::Zeroizing::new(String::with_capacity(crate::input::SECRET_CAP)));
 	let keyfile = app.config.keyfile.clone();
 	let result = rotate_database_credentials(app, &new_password, keyfile.as_deref());
 	app.status = Some(match result {

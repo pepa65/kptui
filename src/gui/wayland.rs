@@ -8,7 +8,7 @@ use anyhow::{Context, ensure};
 use crossterm::event::KeyModifiers;
 use ratatui::layout::Size;
 use sctk::{
-	compositor::{CompositorHandler, CompositorState},
+	compositor::{CompositorHandler, CompositorState, FrameCallbackData},
 	data_device_manager::WritePipe,
 	output::{OutputHandler, OutputState},
 	primary_selection::{
@@ -247,7 +247,7 @@ impl Client {
 		} else {
 			surface.damage(0, 0, size.width.into(), size.height.into());
 		}
-		surface.frame(qh, surface.clone());
+		surface.frame(qh, FrameCallbackData(surface.clone()));
 		self.frame_pending = true;
 		self.window.commit();
 		Ok(())
@@ -417,7 +417,7 @@ impl SeatHandler for Client {
 			Capability::Keyboard if self.keyboard.is_none() => self.keyboard = Some(seat.get_keyboard(qh, ())),
 			Capability::Pointer if self.pointer.is_none() => {
 				let surface = self.compositor.create_surface(qh);
-				self.pointer = self.seats.get_pointer_with_theme(qh, &seat, self.shm.wl_shm(), surface, ThemeSpec::default()).ok();
+				self.pointer = self.seats.get_pointer_with_theme::<Self, ()>(qh, &seat, self.shm.wl_shm(), surface, ThemeSpec::default()).ok();
 			}
 			_ => {}
 		}
@@ -556,7 +556,7 @@ impl PointerHandler for Client {
 							_ => continue,
 						};
 						if let Some(action) = frame.on_click(Duration::from_millis(time.into()), click, matches!(event.kind, Press { .. }))
-							&& let Some(data) = pointer.data::<PointerData>()
+							&& let Some(data) = pointer.data::<PointerData<()>>()
 						{
 							self.frame_action(data.seat(), serial, action);
 						}
@@ -629,16 +629,8 @@ impl ProvidesRegistryState for Client {
 	sctk::registry_handlers![OutputState, SeatState];
 }
 
-sctk::delegate_compositor!(Client);
-sctk::delegate_subcompositor!(Client);
-sctk::delegate_output!(Client);
-sctk::delegate_shm!(Client);
-sctk::delegate_seat!(Client);
-sctk::delegate_pointer!(Client);
-sctk::delegate_xdg_shell!(Client);
-sctk::delegate_xdg_window!(Client);
 sctk::delegate_registry!(Client);
-sctk::delegate_primary_selection!(Client);
+sctk::delegate_dispatch2!(Client);
 
 #[cfg(test)]
 mod tests {

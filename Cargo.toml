@@ -3,7 +3,7 @@ name = "kptui"
 default-run = "kptui"
 version = "0.36.0"
 edition = "2024"
-rust-version = "1.89.0"
+rust-version = "1.92.0"
 description = "Highly secure TUI password manager for KeePass KDBX vaults (includes Linux GUI)"
 authors = ["Pombo <https://github.com/pomboverso>", "<github.com/pepa65>"]
 license = "GPL-3.0-or-later"
@@ -35,13 +35,13 @@ gui = ["dep:cairo-sys-rs", "dep:glib-sys", "dep:gobject-sys", "dep:pango-sys", "
 pkg-config = { version = "0.3", optional = true }
 
 [target.'cfg(all(target_os = "linux", target_env = "gnu"))'.dependencies]
-cairo-sys-rs = { version = "0.18", optional = true }
-glib-sys = { version = "0.18", optional = true }
-gobject-sys = { version = "0.18", optional = true }
-pango-sys = { version = "0.18", features = ["v1_44"], optional = true }
-x11rb = { version = "0.13", features = ["xkb"], optional = true }
+cairo-sys-rs = { version = "0.22", optional = true }
+glib-sys = { version = "0.22", optional = true }
+gobject-sys = { version = "0.22", optional = true }
+pango-sys = { version = "0.22", features = ["v1_44"], optional = true }
+x11rb = { version = "0.14", features = ["xkb"], optional = true }
 xkeysym = { version = "0.2", optional = true }
-smithay-client-toolkit = { version = "0.20", default-features = false, features = ["calloop"], optional = true }
+smithay-client-toolkit = { version = "0.21", default-features = false, features = ["calloop"], optional = true }
 wayland-client = { version = "0.31", optional = true }
 xkbcommon = { version = "0.9", features = ["wayland"], optional = true }
 
