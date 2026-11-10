@@ -5,7 +5,7 @@
 [![license](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://github.com/pepa65/kptui/blob/main/LICENSE.md)
 [![downloads](https://img.shields.io/crates/d/kptui.svg)](https://crates.io/crates/kptui)
 
-# kptui 0.36.0
+# kptui 0.36.1
 **Highly secure TUI password manager for [KeePass](https://keepass.info/) KDBX vaults (includes Linux GUI)**
 * Compatible with the PassKeeper/KeePass KDBX `.kdb` and `.kdbx` file format.
 * It saves its database file to `KDBX4.1` format, which can be used by:
@@ -48,14 +48,14 @@
 
 ## Usage
 ```
-kptui 0.36.0 - TUI password manager for KeePass vaults
+kptui 0.36.1 - TUI password manager for KeePass vaults
 Usage:  kptui [slim | version | help]
 ```
 
 ## Installing
 ### Download static single-binary
 ```
-wget https://github.com/pepa65/kptui/releases/download/0.36.0/kptui
+wget https://github.com/pepa65/kptui/releases/download/0.36.1/kptui
 sudo mv kptui /usr/local/bin
 sudo chown root:root /usr/local/bin/kptui
 sudo chmod +x /usr/local/bin/kptui
