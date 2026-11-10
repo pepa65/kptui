@@ -2,6 +2,8 @@ mod app;
 mod config;
 mod db;
 mod export;
+#[cfg(all(feature = "gui", target_os = "linux", target_env = "gnu"))]
+mod gui;
 mod import;
 mod input;
 mod theme;
@@ -14,10 +16,14 @@ use std::os::fd::AsFd;
 use std::process::ExitCode;
 use zeroize::Zeroizing;
 
+const BIN_NAME: &str = env!("CARGO_BIN_NAME");
+const USAGE: &str = concat!("Usage: ", env!("CARGO_BIN_NAME"), " [tui | slim | gui | version | help]");
+
 enum Command {
 	Help,
 	Version,
 	Tui(bool),
+	Gui,
 }
 
 fn read_stdin() -> io::Result<Zeroizing<String>> {
@@ -61,10 +67,13 @@ fn read_stdin() -> io::Result<Zeroizing<String>> {
 
 fn parse_args(args: &[String]) -> Result<Command, String> {
 	match args {
+		[] if BIN_NAME == "kpgui" => Ok(Command::Gui),
 		[] => Ok(Command::Tui(false)),
+		[arg] if matches!(arg.as_str(), "tui" | "--tui") => Ok(Command::Tui(false)),
 		[arg, ..] if matches!(arg.as_str(), "help" | "-h" | "--help") => Ok(Command::Help),
 		[arg, ..] if matches!(arg.as_str(), "version" | "-V" | "--version") => Ok(Command::Version),
 		[arg] if matches!(arg.as_str(), "slim" | "-s" | "--slim") => Ok(Command::Tui(true)),
+		[arg] if matches!(arg.as_str(), "gui" | "--gui") => Ok(Command::Gui),
 		_ => Err(format!("invalid argument(s): {}", args.join(" "))),
 	}
 }
@@ -109,29 +118,35 @@ fn main() -> std::process::ExitCode {
 	let command = match parse_args(&args) {
 		Ok(command) => command,
 		Err(error) => {
-			eprintln!("kptui: {error}");
-			eprintln!("Usage: {} [slim | version | help]", env!("CARGO_PKG_NAME"));
+			eprintln!("{BIN_NAME}: {error}");
+			eprintln!("{USAGE}");
 			return ExitCode::from(2);
 		}
 	};
 
 	match command {
 		Command::Help => {
-			println!("{} {} - {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"), env!("CARGO_PKG_DESCRIPTION"));
-			println!("Usage:  {} [slim | version | help]", env!("CARGO_PKG_NAME"));
+			let description = if BIN_NAME == "kpgui" {
+				"Linux GUI and terminal password manager for KeePass KDBX vaults"
+			} else {
+				env!("CARGO_PKG_DESCRIPTION")
+			};
+			println!("{BIN_NAME} {} - {description}", env!("CARGO_PKG_VERSION"));
+			println!("{USAGE}");
 			ExitCode::SUCCESS
 		}
 
 		Command::Version => {
-			println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+			println!("{BIN_NAME} {}", env!("CARGO_PKG_VERSION"));
 			ExitCode::SUCCESS
 		}
 
+		Command::Gui => run_gui(),
 		Command::Tui(slim) => {
 			let password = match read_stdin() {
 				Ok(password) => password,
 				Err(err) => {
-					eprintln!("kptui: couldn't read password from stdin: {err}");
+					eprintln!("{BIN_NAME}: couldn't read password from stdin: {err}");
 					return ExitCode::FAILURE;
 				}
 			};
@@ -140,11 +155,25 @@ fn main() -> std::process::ExitCode {
 			let result = app::run(&mut guard.terminal, slim, password);
 			drop(guard);
 			if let Err(err) = result {
-				eprintln!("kptui: {err}");
+				eprintln!("{BIN_NAME}: {err}");
 				ExitCode::FAILURE
 			} else {
 				ExitCode::SUCCESS
 			}
+		}
+	}
+}
+
+fn run_gui() -> ExitCode {
+	#[cfg(all(feature = "gui", target_os = "linux", target_env = "gnu"))]
+	let result = gui::run();
+	#[cfg(not(all(feature = "gui", target_os = "linux", target_env = "gnu")))]
+	let result: anyhow::Result<()> = Err(anyhow::anyhow!("GUI requires a GNU/Linux target and a build with --features gui"));
+	match result {
+		Ok(()) => ExitCode::SUCCESS,
+		Err(err) => {
+			eprintln!("{BIN_NAME}: {err}");
+			ExitCode::FAILURE
 		}
 	}
 }

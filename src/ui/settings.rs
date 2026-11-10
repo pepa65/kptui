@@ -2,20 +2,19 @@ use std::borrow::Cow;
 
 use ratatui::{
 	Frame,
-	layout::{Alignment, Constraint, Direction, Layout, Rect},
+	layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
 	style::Style,
 	text::{Line, Span},
-	widgets::{Block, Borders, Clear, List, ListItem, Padding, Paragraph},
+	widgets::{Clear, List, ListItem, Paragraph},
 };
 
 use crate::app::App;
-use crate::input::settings::{
-	AUTO_EXIT_ROW, CHANGE_PASSWORD_ROW, DATABASE_ROW, EXPORT_ROW, IMPORT_ROW, ITERATIONS_ROW, KEYFILE_ROW, THEME_ROW,
-};
+use crate::input::settings::{AUTO_EXIT_ROW, LOCKED_ROW_COUNT, UNLOCKED_ROW_COUNT};
 use crate::util::wrap_help_items;
+use unicode_width::UnicodeWidthStr;
 
 fn centered_cursor_x(input_area: Rect, typed_len: usize) -> u16 {
-	let inner = Block::default().borders(Borders::ALL).inner(input_area);
+	let inner = input_area.inner(Margin { horizontal: 1, vertical: 1 });
 	if inner.width == 0 {
 		return inner.x;
 	}
@@ -26,7 +25,7 @@ fn centered_cursor_x(input_area: Rect, typed_len: usize) -> u16 {
 }
 
 fn nav_help_items(slim_mode: bool) -> &'static [&'static str] {
-	if slim_mode { &["[↑↓]", "[Enter]", "[Esc]"] } else { &["[↑↓] Navigate", "[Enter] Modify", "[Esc] Back"] }
+	if slim_mode { &["[Enter]", "[Esc]"] } else { &["[Enter] Modify", "[Esc] Back"] }
 }
 
 fn field_help_items(slim_mode: bool) -> &'static [&'static str] {
@@ -69,7 +68,7 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 
 	let help_items = if editing_field { field_help_items(app.slim_mode) } else { nav_help_items(app.slim_mode) };
 
-	let help_width = full_area.width.saturating_sub(2);
+	let help_width = full_area.width;
 	let help_lines = wrap_help_items(help_items, help_width);
 	let help_height = u16::try_from(help_lines.len()).unwrap_or(u16::MAX);
 
@@ -82,100 +81,78 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 	let normal = Style::new().fg(theme.text);
 	let accent = Style::new().fg(theme.accent);
 	let warning = Style::new().fg(theme.warning);
-	let border_style = Style::new().fg(theme.border);
 	let placeholder = Style::new().fg(theme.text).bold();
 	let editing_style = Style::new().fg(theme.selection_fg).bg(theme.selection_bg);
 	let label_style = Style::new().fg(theme.header).bold();
-	let field = |field_index: usize, label: &'static str, value: String| -> ListItem<'static> {
-		let current_label_style = if selected == field_index { editing_style } else { label_style };
-		let value_line = if value.is_empty() {
-			Line::from(Span::styled("(not set)", placeholder))
-		} else {
-			Line::from(Span::styled(value, normal))
-		};
-		ListItem::new(vec![Line::from(Span::styled(label, current_label_style)), value_line, Line::from("")])
-	};
-	let database_value = app.config.default_database.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
-	let keyfile_value = app.config.keyfile.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
-	let iterations_value = app.config.kdf_iterations.to_string();
-	let auto_exit_value = if app.config.auto_exit.is_zero() { "0 (never)".to_string() } else { app.config.auto_exit.as_secs().to_string() };
-	let theme_value = if app.available_themes.is_empty() {
-		Line::from(Span::styled("no themes found in ~/.config/kptui/themes", warning))
-	} else {
-		match app.config.theme.as_deref() {
-			Some(name) => Line::from(Span::styled(crate::theme::slugify(name), normal)),
-			None => Line::from(Span::styled("(not set)", placeholder)),
-		}
-	};
-	let mut items = vec![
-		field(DATABASE_ROW, "Default database", database_value),
-		field(KEYFILE_ROW, "Keyfile (optional)", keyfile_value),
-		field(ITERATIONS_ROW, "KDF iterations", iterations_value),
-		field(AUTO_EXIT_ROW, "Auto-exit (seconds)", auto_exit_value),
-		ListItem::new(vec![
-			Line::from(Span::styled("Theme", if selected == THEME_ROW { editing_style } else { label_style })),
-			theme_value,
-			Line::from(""),
-		]),
+	const LABELS: [&str; UNLOCKED_ROW_COUNT] = [
+		"Database",
+		"Keyfile (optional)",
+		"KDF iterations (time cost)",
+		"Auto-exit (seconds)",
+		"Theme",
+		"Change master password",
+		"Import database",
+		"Export database",
 	];
-	if !app.login_settings {
-		items.extend([
-			ListItem::new(vec![
-				Line::from(Span::styled("Change master password", if selected == CHANGE_PASSWORD_ROW { editing_style } else { label_style })),
-				Line::from(Span::styled("[Enter] Change", placeholder)),
-				Line::from(""),
-			]),
-			ListItem::new(vec![
-				Line::from(Span::styled("Import database", if selected == IMPORT_ROW { editing_style } else { label_style })),
-				Line::from(Span::styled("[Enter] Import", placeholder)),
-				Line::from(""),
-			]),
-			ListItem::new(vec![
-				Line::from(Span::styled("Export database", if selected == EXPORT_ROW { editing_style } else { label_style })),
-				Line::from(Span::styled("[Enter] Export", placeholder)),
-				Line::from(""),
-			]),
-		]);
-	}
 
-	let list = List::new(items).block(
-		Block::default()
-			.borders(Borders::ALL)
-			.padding(Padding::horizontal(1))
-			.border_style(border_style)
-			.title(Span::styled(" Configuration ", Style::default().fg(app.theme.error))),
-	);
+	let path_value =
+		|path: Option<&std::path::Path>| path.map_or_else(|| Span::styled("(not set)", placeholder), |path| Span::styled(path.display().to_string(), normal));
+	let theme_value = if app.available_themes.is_empty() {
+		Span::styled("no themes found in ~/.config/kptui/themes", warning)
+	} else if let Some(configured) = &app.config.theme {
+		let name = app.available_themes.iter().find(|name| crate::theme::slugify(name) == *configured).unwrap_or(configured);
+		Span::styled(name.as_str(), normal)
+	} else {
+		Span::styled("(not set)", placeholder)
+	};
+	let values = [
+		path_value(app.config.default_database.as_deref()),
+		path_value(app.config.keyfile.as_deref()),
+		Span::styled(app.config.kdf_iterations.to_string(), normal),
+		Span::styled(app.config.auto_exit.as_secs().to_string(), normal),
+		theme_value,
+		Span::styled("[Enter] to change", placeholder),
+		Span::styled("[Enter] to import", placeholder),
+		Span::styled("[Enter] to export", placeholder),
+	];
+	let row_count = if app.login_settings { LOCKED_ROW_COUNT } else { UNLOCKED_ROW_COUNT };
+	let items = LABELS.into_iter().zip(values).take(row_count).enumerate().map(|(row, (label, value))| {
+		let style = if selected == row { editing_style } else { label_style };
+		ListItem::new(Line::from(vec![Span::styled(label, style), Span::styled(": ", normal), value]))
+	});
 
+	let section = super::section("Configuration ", theme, 0);
+	let list_area = section.inner(vertical[0]);
+	let list = List::new(items).block(section);
 	frame.render_stateful_widget(list, vertical[0], &mut app.settings_state);
 
-	// Overlay the FieldEditor on the selected editable setting.
 	if editing_field
 		&& selected <= AUTO_EXIT_ROW
 		&& let Some(editor) = app.field_editor.as_ref()
+		&& let Some(row) = selected.checked_sub(app.settings_state.offset())
+		&& row < usize::from(list_area.height)
 	{
-		let list_area = vertical[0];
-
-		// The List has a one-cell border and one-cell horizontal padding.
-		// Each setting occupies three rows: label, value/editor, blank
-		let value_y = list_area.y.saturating_add(2).saturating_add(u16::try_from(selected.saturating_mul(3)).unwrap_or(u16::MAX));
-		let editor_x = list_area.x.saturating_add(2);
-		let editor_width = list_area.width.saturating_sub(3);
-		if editor_width > 0 {
-			let (visible, cursor_column) = editor.single_line_view(editor_width as usize);
-			let field_area = Rect { x: editor_x, y: value_y, width: editor_width, height: 1 };
+		let offset = (LABELS[selected].width() + 2) as u16;
+		let field_area = Rect {
+			x: list_area.x.saturating_add(offset),
+			y: list_area.y.saturating_add(row as u16),
+			width: list_area.width.saturating_sub(offset),
+			height: 1,
+		};
+		if field_area.width > 0 {
+			let (visible, cursor_column) = editor.single_line_view(usize::from(field_area.width));
 			frame.render_widget(Clear, field_area);
-			frame.render_widget(Paragraph::new(visible.as_str()).style(normal), field_area);
-			if cursor_column < editor_width as usize {
-				let cursor_x = field_area.x.saturating_add(u16::try_from(cursor_column).unwrap_or(u16::MAX));
-				frame.set_cursor_position((cursor_x, field_area.y));
+			frame.render_widget(Paragraph::new(visible.as_str()).style(super::input_style(theme)), field_area);
+			if cursor_column < usize::from(field_area.width) {
+				frame.set_cursor_position((field_area.x.saturating_add(cursor_column as u16), field_area.y));
 			}
 		}
 	}
 
 	let help = if let Some(status) = &app.status {
-		Paragraph::new(format!("  {status}")).style(warning)
+		Paragraph::new(status.as_str()).style(warning)
 	} else {
-		let help_text = help_lines.iter().map(|line| format!("  {line}")).collect::<Vec<_>>().join("\n");
+		let help_text = help_lines.join("\n");
 
 		Paragraph::new(help_text).style(accent)
 	};
@@ -206,9 +183,9 @@ fn draw_change_password(frame: &mut Frame, app: &mut App) {
 	app.max_len = input_area.width.saturating_sub(2) as usize;
 
 	let title = match app.password_change_step {
-		crate::app::PasswordChangeStep::Current => Span::styled(" Current master password ", Style::default().fg(app.theme.error)),
-		crate::app::PasswordChangeStep::New => Span::styled(" New master password ", Style::default().fg(app.theme.error)),
-		crate::app::PasswordChangeStep::ConfirmNew => Span::styled(" Confirm new master password ", Style::default().fg(app.theme.error)),
+		crate::app::PasswordChangeStep::Current => " Current master password ",
+		crate::app::PasswordChangeStep::New => " New master password ",
+		crate::app::PasswordChangeStep::ConfirmNew => " Confirm new master password ",
 	};
 
 	let buf = match app.password_change_step {
@@ -217,11 +194,11 @@ fn draw_change_password(frame: &mut Frame, app: &mut App) {
 		crate::app::PasswordChangeStep::ConfirmNew => &app.new_password_confirm,
 	};
 
-	let input = Paragraph::new("•".repeat(buf.chars().count()))
-		.alignment(Alignment::Center)
-		.block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(app.theme.border)).title(title));
+	let display = super::mask_password(buf);
+	let typed_len = display.width();
+	let input = Paragraph::new(display.as_str()).alignment(Alignment::Center);
 
-	frame.render_widget(input, input_area);
+	super::draw_input(frame, input_area, super::section(title, &app.theme, 1), input, &app.theme);
 
 	let hint_area = Rect { x: input_area.x, y: input_area.y.saturating_add(input_area.height), width: input_area.width, height: 1 };
 
@@ -236,7 +213,6 @@ fn draw_change_password(frame: &mut Frame, app: &mut App) {
 
 	frame.render_widget(hint, hint_area);
 
-	let typed_len = buf.chars().count();
 	let cursor_x = centered_cursor_x(input_area, typed_len);
 	if input_area.height > 1 {
 		frame.set_cursor_position((cursor_x, input_area.y.saturating_add(1)));
@@ -266,24 +242,15 @@ fn draw_change_keyfile(frame: &mut Frame, app: &mut App) {
 	let input_area = horizontal[1];
 	app.max_len = input_area.width.saturating_sub(2) as usize;
 
-	let (title, display, typed_len) = match app.keyfile_change_step {
-		crate::app::KeyfileChangeStep::Current => (
-			Span::styled(" Current master password ", Style::default().fg(app.theme.error)),
-			Cow::Owned("•".repeat(app.current_password_buffer.chars().count())),
-			app.current_password_buffer.chars().count(),
-		),
-		crate::app::KeyfileChangeStep::Path => (
-			Span::styled(" New keyfile path (empty to remove) ", Style::default().fg(app.theme.error)),
-			Cow::Borrowed(app.keyfile_path_buffer.as_str()),
-			app.keyfile_path_buffer.chars().count(),
-		),
+	let (title, display) = match app.keyfile_change_step {
+		crate::app::KeyfileChangeStep::Current => (" Current master password ", Cow::Owned(super::mask_password(&app.current_password_buffer))),
+		crate::app::KeyfileChangeStep::Path => (" New keyfile path (empty to remove) ", Cow::Borrowed(app.keyfile_path_buffer.as_str())),
 	};
 
-	let input = Paragraph::new(display.as_ref())
-		.alignment(Alignment::Center)
-		.block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(app.theme.border)).title(title));
+	let typed_len = display.as_ref().width();
+	let input = Paragraph::new(display.as_ref()).alignment(Alignment::Center);
 
-	frame.render_widget(input, input_area);
+	super::draw_input(frame, input_area, super::section(title, &app.theme, 1), input, &app.theme);
 
 	let hint_area = Rect { x: input_area.x, y: input_area.y.saturating_add(input_area.height), width: input_area.width, height: 1 };
 
@@ -333,8 +300,8 @@ fn draw_import(frame: &mut Frame, app: &mut App) {
 	let masked = matches!(app.import_step, crate::app::ImportStep::KdbxPassword);
 
 	let title = match app.import_step {
-		crate::app::ImportStep::Path => Span::styled(" Import from file (.kdbx/.csv/.json) ", Style::default().fg(app.theme.error)),
-		crate::app::ImportStep::KdbxPassword => Span::styled(" Password for that vault ", Style::default().fg(app.theme.error)),
+		crate::app::ImportStep::Path => " Import from file (.kdbx/.csv/.json) ",
+		crate::app::ImportStep::KdbxPassword => " Password for that vault ",
 	};
 
 	let buf = match app.import_step {
@@ -342,17 +309,11 @@ fn draw_import(frame: &mut Frame, app: &mut App) {
 		crate::app::ImportStep::KdbxPassword => &app.import_kdbx_password_buffer,
 	};
 
-	let display_text: Cow<'_, str> = if masked {
-		Cow::Owned("•".repeat(buf.chars().count()))
-	} else {
-		Cow::Borrowed(buf.as_str())
-	};
+	let display_text: Cow<'_, str> = if masked { Cow::Owned(super::mask_password(buf)) } else { Cow::Borrowed(buf.as_str()) };
 
-	let input = Paragraph::new(display_text.as_ref())
-		.alignment(Alignment::Center)
-		.block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(app.theme.border)).title(title));
+	let input = Paragraph::new(display_text.as_ref()).alignment(Alignment::Center);
 
-	frame.render_widget(input, input_area);
+	super::draw_input(frame, input_area, super::section(title, &app.theme, 1), input, &app.theme);
 
 	let hint_area = Rect { x: input_area.x, y: input_area.y.saturating_add(input_area.height), width: input_area.width, height: 1 };
 
@@ -367,7 +328,7 @@ fn draw_import(frame: &mut Frame, app: &mut App) {
 
 	frame.render_widget(hint, hint_area);
 
-	let typed_len = buf.chars().count();
+	let typed_len = display_text.as_ref().width();
 	let cursor_x = centered_cursor_x(input_area, typed_len);
 	if input_area.height > 1 {
 		frame.set_cursor_position((cursor_x, input_area.y.saturating_add(1)));
@@ -405,11 +366,14 @@ fn draw_export(frame: &mut Frame, app: &mut App) {
 		crate::app::ExportStep::Confirm => " Confirm export ",
 	};
 
-	let input = Paragraph::new(app.export_path_buffer.as_str())
-		.alignment(Alignment::Center)
-		.block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(app.theme.border)).title(title));
+	let input = Paragraph::new(app.export_path_buffer.as_str()).alignment(Alignment::Center);
 
-	frame.render_widget(input, input_area);
+	let section = super::section(title, &app.theme, 1);
+	if matches!(app.export_step, crate::app::ExportStep::Path) {
+		super::draw_input(frame, input_area, section, input, &app.theme);
+	} else {
+		frame.render_widget(input.block(section), input_area);
+	}
 
 	let hint_area = Rect { x: input_area.x, y: input_area.y.saturating_add(input_area.height), width: input_area.width, height: 1 };
 
@@ -452,7 +416,7 @@ fn draw_export(frame: &mut Frame, app: &mut App) {
 fn draw_theme_picker(frame: &mut Frame, app: &mut App) {
 	let full_area = frame.area();
 
-	let help_width = full_area.width.saturating_sub(2);
+	let help_width = full_area.width;
 	let help_lines = wrap_help_items(export_help_items(app.slim_mode), help_width);
 	let help_height = u16::try_from(help_lines.len()).unwrap_or(u16::MAX);
 
@@ -465,7 +429,6 @@ fn draw_theme_picker(frame: &mut Frame, app: &mut App) {
 	let normal = Style::new().fg(theme.text);
 	let accent = Style::new().fg(theme.accent);
 	let warning = Style::new().fg(theme.warning);
-	let border_style = Style::new().fg(theme.border);
 	let current_theme = app.config.theme.as_deref().map(crate::theme::slugify);
 
 	let items: Vec<ListItem> = app
@@ -482,21 +445,15 @@ fn draw_theme_picker(frame: &mut Frame, app: &mut App) {
 		.collect();
 
 	let list = List::new(items)
-		.block(
-			Block::default()
-				.borders(Borders::ALL)
-				.padding(Padding::horizontal(1))
-				.border_style(border_style)
-				.title(Span::styled(" Theme ", Style::default().fg(app.theme.error))),
-		)
+		.block(super::section("Theme ", theme, 0))
 		.highlight_style(Style::new().fg(theme.selection_fg).bg(theme.selection_bg).bold());
 
 	frame.render_stateful_widget(list, vertical[0], &mut app.theme_state);
 
 	let help = if let Some(status) = &app.status {
-		Paragraph::new(format!("  {status}")).style(warning)
+		Paragraph::new(status.as_str()).style(warning)
 	} else {
-		let help_text = help_lines.iter().map(|line| format!("  {line}")).collect::<Vec<_>>().join("\n");
+		let help_text = help_lines.join("\n");
 		Paragraph::new(help_text).style(accent)
 	};
 

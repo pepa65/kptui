@@ -7,14 +7,13 @@ use crate::db::{parse_totp_edit_value, save_database, totp_edit_value};
 use crate::input::command::preview_entry;
 use crate::input::fieldedit::{EditAction, FieldEditor};
 
-const FIELD_COUNT: usize = 7;
+const FIELD_COUNT: usize = 6;
 const NAME_INDEX: usize = 0;
 const USER_INDEX: usize = 1;
 const PASSWORD_INDEX: usize = 2;
 const URL_INDEX: usize = 3;
 const TOTP_INDEX: usize = 4;
-const LAST_MODIFIED_INDEX: usize = 5;
-const NOTES_INDEX: usize = 6;
+const NOTES_INDEX: usize = 5;
 
 pub fn handle_edit_input(app: &mut App, key: KeyEvent) {
 	if app.editing_field {
@@ -63,10 +62,6 @@ fn move_selection(app: &mut App, delta: i32) {
 
 fn start_editing_field(app: &mut App) {
 	let selected = app.edit_state.selected().unwrap_or(0);
-	if selected == LAST_MODIFIED_INDEX {
-		app.status = Some("Last modified is set automatically".to_string());
-		return;
-	}
 
 	let Some(entry) = app.edit_entry.as_ref() else {
 		return;

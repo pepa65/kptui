@@ -1,12 +1,14 @@
 [alias]
 rel = "build --release --target x86_64-unknown-linux-musl"
+andr = "ndk build --release --target aarch64-linux-android"
+gui = "build --release --target x86_64-unknown-linux-gnu --features gui --bin kpgui"
 inst = "install --target x86_64-unknown-linux-musl --path ."
-clip = "clippy --release --all-targets --all-features -- -D warnings"
-pub = "publish --target x86_64-unknown-linux-musl"
+clip = "clippy --release --target x86_64-unknown-linux-gnu --features gui -- -D warnings"
+clipt = "clippy --release --all-targets -- -D warnings"
+pub = "publish"
 up = "update --verbose"
 au = "audit --deny warnings"
-andr = "ndk build --release --target aarch64-linux-android"
-tst = "test --all-features"
+tst = "test --features gui --target x86_64-unknown-linux-gnu"
 t = "test"
 c = "check"
 

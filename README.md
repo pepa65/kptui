@@ -2,11 +2,11 @@
 [![build](https://github.com/pepa65/kptui/actions/workflows/rust.yml/badge.svg)](https://github.com/pepa65/kptui/actions/workflows/rust.yml)
 [![dependencies](https://deps.rs/repo/github/pepa65/kptui/status.svg)](https://deps.rs/repo/github/pepa65/kptui)
 [![docs](https://img.shields.io/badge/docs-kptui-blue.svg)](https://docs.rs/crate/kptui/latest)
-[![license](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://github.com/pepa65/kptui/blob/main/LICENSE)
+[![license](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://github.com/pepa65/kptui/blob/main/LICENSE.md)
 [![downloads](https://img.shields.io/crates/d/kptui.svg)](https://crates.io/crates/kptui)
 
 # kptui 0.35.1
-**Highly secure TUI password manager for [KeePass](https://keepass.info/) KDBX vaults**
+**Highly secure TUI password manager for [KeePass](https://keepass.info/) KDBX vaults (includes Linux GUI)**
 * Compatible with the PassKeeper/KeePass KDBX `.kdb` and `.kdbx` file format.
 * It saves its database file to `KDBX4.1` format, which can be used by:
   KeePassXC, KeePassDX/KeePass2Android, KeeWeb and KeePass2.
@@ -16,8 +16,10 @@
   - KDF-Memory: `262144 KiB`
   - KDF-Iterations: `90` (!) [configurable]
   - KDF-Parallel: `4`
-* The Terminal User Interface is responsive and fully keyboard-driven.
 * Stores: `Name` of the entry, `Username`, `Password`, `TOTP`, `URL` and `Notes` (only what it needs).
+* The Terminal User Interface is responsive and fully keyboard-driven, and a stand-alone static binary.
+* The Graphical User Interface runs on X11 and Wayland Linux and is even more secure in wiping all secrets.
+  This binary (`kpgui`) is dynamically linked to C and graphical system libraries.
 
 ## Features
 * **KDBX4.1 vaults**: Reads and writes standard `.kdbx` files, so you can open the same vault in
@@ -58,6 +60,8 @@ sudo mv kptui /usr/local/bin
 sudo chown root:root /usr/local/bin/kptui
 sudo chmod +x /usr/local/bin/kptui
 ```
+
+### Download
 
 ### Install with cargo
 #### Static musl build from cloned repo
@@ -143,3 +147,20 @@ All fields are optional, as the above are the default values.
 * Using encrypted swap or zram (or no swap) increases security.
 * Booting with kernel cmdline option `init_on_free=1` causes every freed page to get zeroed.
 * On Linux, some extra hardening takes place in the operation of kptui.
+* A GUI version of kptui is available on Linux, with the idea that no potentially secret text strings are somehow left (on ratatui or in screen buffers), because the GUI can be controlled completely by the app, so zeroizing can be more complete, at most leaving pixels in the shared buffer of the compositor (which Wayland completely wipes). Both X11 and Wayland zeroizes their text assembly buffers and their Cairo image on drop.
+  - There is an issue with entering passwords in X11 (not just for `kpgui` or `kptui`, for any application!) that any process running on the same X-server (or as the same user, because that process could get access to the same X-server) can in principle access any keystroke, so any other GUI app that is running at the same time. Wayland does not have this issue. So beware what you have running!
+  - Using `kptui` on a text console does enhance security.
+
+### Optional Linux GUI
+The GNU/Linux `gui` feature opens the existing vault interface on native Wayland or X11, using the same configuration and vault operations.
+* It uses PangoCairo for text shaping and supports XKB layout switching.
+* Besides the keyboard shortcuts, field labels in the Config, Index or Entry are left-click selectable, and double-click activated.
+* The font size can be changed by resizing the `kpgui` window (the last size is saved to `~/.config/kptui/gui-size`).
+* To select text, mouse-drag select works, as well as double-click to select a whole line (both of these copy to the Primary clipboard, which can usually be pasted with middle-click). This operation is safer on Wayland!
+* With no arguments, `kpgui` opens the GUI (an x86-64 gnu Linux build of kptui will accept `gui` as argument to open it). It uses native Wayland when `WAYLAND_DISPLAY` or `WAYLAND_SOCKET` is set, and X11 otherwise. Set environment variables `KPGUI_BACKEND=x11` or `KPGUI_BACKEND=wayland` to choose explicitly. Use `kpgui tui` for the full terminal UI, `kpgui slim` for the compact UI, or `kpgui help` and `kpgui version`.
+
+#### Building the GUI binary (dynamically linked)
+To build the GUI (feature: "gui") on Debian/Ubuntu, install `pkg-config`, `libx11-dev`, `libxkbcommon-dev`, `libpango1.0-dev` (Pango 1.44 or newer), `libcairo2-dev`, and from an x86-64 glibc Linux desktop, run: `cargo gui` to build it.
+
+#### Building release packages
+Run `./buildpkgs` from the checkout on Debian or Ubuntu to build both `.deb` and `.rpm` packages in `dist/`. It builds `kpgui` once and requires the GUI build dependencies above, plus Python 3, `dpkg-dev`, and `rpm`. The RPM uses the shared libraries available on the build host, so verify it on each target distribution before publishing.

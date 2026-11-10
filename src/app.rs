@@ -2,10 +2,10 @@ use std::io;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use crossterm::event::{self, Event};
+use crossterm::event::{self, Event, KeyEvent};
 use keepass::{Database, DatabaseKey};
 use ratatui::{
-	Terminal,
+	Frame, Terminal,
 	backend::CrosstermBackend,
 	style::Style,
 	widgets::{Block, ListState, TableState},
@@ -21,7 +21,7 @@ use crate::input::index::handle_index_input;
 use crate::input::login::{attempt_unlock, create_database_with_password, database_missing, handle_login_input};
 use crate::input::settings::handle_settings_input;
 use crate::theme::{Theme, load_theme};
-use crate::ui::edit::draw_edit;
+use crate::ui::edit::{EditView, draw_edit};
 use crate::ui::index::draw_index;
 use crate::ui::login::draw_login;
 use crate::ui::settings::draw_settings;
@@ -168,7 +168,7 @@ impl App {
 	}
 }
 
-fn maybe_auto_exit(app: &mut App) {
+pub fn maybe_auto_exit(app: &mut App) {
 	if !matches!(app.screen, Screen::Index | Screen::Edit | Screen::Settings) {
 		return;
 	}
@@ -180,7 +180,7 @@ fn maybe_auto_exit(app: &mut App) {
 	app.should_quit = true;
 }
 
-pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: bool, password: Zeroizing<String>) -> io::Result<()> {
+pub fn start(slim_mode: bool, password: Zeroizing<String>) -> App {
 	let _ = crate::theme::ensure_default_themes();
 	let mut config = load_config().unwrap_or_default();
 	if config.default_database.is_none() {
@@ -257,18 +257,38 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 			attempt_unlock(&mut app);
 		}
 	}
+	app
+}
+
+pub fn draw(frame: &mut Frame, app: &mut App) -> Option<EditView> {
+	frame.render_widget(Block::default().style(Style::default().bg(app.theme.background)), frame.area());
+	match app.screen {
+		Screen::Login => draw_login(frame, app),
+		Screen::Index => draw_index(frame, app),
+		Screen::Edit => return draw_edit(frame, app),
+		Screen::Settings => draw_settings(frame, app),
+	}
+	None
+}
+
+pub fn handle_key(app: &mut App, key: KeyEvent) {
+	app.last_activity = Instant::now();
+	match app.screen {
+		Screen::Login => handle_login_input(app, key),
+		Screen::Index => handle_index_input(app, key),
+		Screen::Edit => handle_edit_input(app, key),
+		Screen::Settings => handle_settings_input(app, key),
+	}
+}
+
+pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: bool, password: Zeroizing<String>) -> io::Result<()> {
+	let mut app = start(slim_mode, password);
 	const TICK_RATE: Duration = Duration::from_millis(200);
 	let mut last_scroll = 0usize;
 	let mut last_len = 0usize;
 	loop {
 		terminal.draw(|frame| {
-			frame.render_widget(Block::default().style(Style::default().bg(app.theme.background)), frame.area());
-			match app.screen {
-				Screen::Login => draw_login(frame, &mut app),
-				Screen::Index => draw_index(frame, &mut app),
-				Screen::Edit => draw_edit(frame, &mut app),
-				Screen::Settings => draw_settings(frame, &mut app),
-			}
+			draw(frame, &mut app);
 		})?;
 		if app.screen != Screen::Edit {
 			last_scroll = 0;
@@ -280,7 +300,9 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 			last_len = cur_len;
 			if changed {
 				terminal.clear()?;
-				terminal.draw(|frame| draw_edit(frame, &mut app))?;
+				terminal.draw(|frame| {
+					draw_edit(frame, &mut app);
+				})?;
 			}
 		}
 		if app.pending_save {
@@ -298,16 +320,8 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 			break;
 		}
 
-		if has_event
-			&& let Event::Key(key) = event::read()?
-		{
-			app.last_activity = Instant::now();
-			match app.screen {
-				Screen::Login => handle_login_input(&mut app, key),
-				Screen::Index => handle_index_input(&mut app, key),
-				Screen::Edit => handle_edit_input(&mut app, key),
-				Screen::Settings => handle_settings_input(&mut app, key),
-			}
+		if has_event && let Event::Key(key) = event::read()? {
+			handle_key(&mut app, key);
 		}
 
 		if app.should_quit {

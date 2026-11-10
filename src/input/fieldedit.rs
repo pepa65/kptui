@@ -4,8 +4,11 @@
 //! It owns the text, cursor, editing mode, and viewport calculations used by
 //! editable fields in the application.
 
+use std::ops::Range;
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 use zeroize::{Zeroize, Zeroizing};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,6 +40,7 @@ pub enum FieldMode {
 pub struct FieldEditor {
 	text: Zeroizing<Vec<u8>>,
 	cursor: usize,
+	anchor: Option<usize>,
 	preferred_column: Option<usize>,
 	mode: FieldMode,
 }
@@ -49,7 +53,7 @@ impl Drop for FieldEditor {
 
 impl Default for FieldEditor {
 	fn default() -> Self {
-		Self { text: Zeroizing::new(Vec::new()), cursor: 0, preferred_column: None, mode: FieldMode::SingleLine }
+		Self { text: Zeroizing::new(Vec::new()), cursor: 0, anchor: None, preferred_column: None, mode: FieldMode::SingleLine }
 	}
 }
 
@@ -69,7 +73,7 @@ impl FieldEditor {
 	/// Creates an editor with an explicitly selected mode.
 	pub fn with_mode(text: impl Into<String>, mode: FieldMode) -> Self {
 		let text = text.into();
-		Self { text: Zeroizing::new(text.into_bytes()), cursor: 0, preferred_column: None, mode }
+		Self { text: Zeroizing::new(text.into_bytes()), cursor: 0, anchor: None, preferred_column: None, mode }
 	}
 
 	fn as_str(&self) -> &str {
@@ -91,6 +95,35 @@ impl FieldEditor {
 
 	pub fn cursor(&self) -> usize {
 		self.cursor
+	}
+
+	pub fn selection(&self) -> Option<Range<usize>> {
+		self.anchor.filter(|&anchor| anchor != self.cursor).map(|anchor| anchor.min(self.cursor)..anchor.max(self.cursor))
+	}
+
+	#[cfg(any(test, all(feature = "gui", target_os = "linux", target_env = "gnu")))]
+	pub fn select_to(&mut self, offset: usize, extend: bool) {
+		if !self.as_str().is_char_boundary(offset) {
+			return;
+		}
+		if extend {
+			self.anchor.get_or_insert(self.cursor);
+		} else {
+			self.anchor = Some(offset);
+		}
+		self.cursor = offset;
+		self.preferred_column = None;
+	}
+
+	fn delete_selection(&mut self) -> bool {
+		let selection = self.selection();
+		self.anchor = None;
+		let Some(range) = selection else { return false };
+		self.cursor = range.start;
+		self.text.drain(range);
+		self.wipe_spare();
+		self.preferred_column = None;
+		true
 	}
 
 	pub fn is_single_line(&self) -> bool {
@@ -116,9 +149,7 @@ impl FieldEditor {
 	}
 
 	fn wipe_spare(&mut self) {
-		for byte in self.text.spare_capacity_mut() {
-			byte.write(0);
-		}
+		self.text.spare_capacity_mut().zeroize();
 	}
 
 	pub fn insert(&mut self, ch: char) {
@@ -126,6 +157,7 @@ impl FieldEditor {
 			return;
 		}
 
+		self.delete_selection();
 		let mut encoded = Zeroizing::new([0u8; 4]);
 		let bytes = ch.encode_utf8(&mut *encoded).as_bytes();
 		self.reserve(bytes.len());
@@ -206,6 +238,9 @@ impl FieldEditor {
 	}
 
 	pub fn backspace(&mut self) {
+		if self.delete_selection() {
+			return;
+		}
 		if self.cursor == 0 {
 			return;
 		}
@@ -218,6 +253,9 @@ impl FieldEditor {
 	}
 
 	pub fn delete(&mut self) {
+		if self.delete_selection() {
+			return;
+		}
 		if self.cursor == self.text.len() {
 			return;
 		}
@@ -229,6 +267,13 @@ impl FieldEditor {
 	}
 
 	pub fn move_left(&mut self) {
+		let selection = self.selection();
+		self.anchor = None;
+		if let Some(range) = selection {
+			self.cursor = range.start;
+			self.preferred_column = None;
+			return;
+		}
 		if self.cursor == 0 {
 			return;
 		}
@@ -238,6 +283,13 @@ impl FieldEditor {
 	}
 
 	pub fn move_right(&mut self) {
+		let selection = self.selection();
+		self.anchor = None;
+		if let Some(range) = selection {
+			self.cursor = range.end;
+			self.preferred_column = None;
+			return;
+		}
 		if self.cursor == self.text.len() {
 			return;
 		}
@@ -247,6 +299,7 @@ impl FieldEditor {
 	}
 
 	pub fn home(&mut self) {
+		self.anchor = None;
 		if self.is_single_line() {
 			self.cursor = 0;
 		} else {
@@ -257,6 +310,7 @@ impl FieldEditor {
 	}
 
 	pub fn end(&mut self) {
+		self.anchor = None;
 		if self.is_single_line() {
 			self.cursor = self.text.len();
 		} else {
@@ -304,8 +358,14 @@ impl FieldEditor {
 	}
 
 	pub fn single_line_view(&self, width: usize) -> (Zeroizing<String>, usize) {
+		let (range, cursor) = self.single_line_range(width);
+		// One exact-size allocation, wiped when dropped.
+		(Zeroizing::new(self.as_str()[range].to_owned()), cursor)
+	}
+
+	pub fn single_line_range(&self, width: usize) -> (Range<usize>, usize) {
 		if width == 0 {
-			return (Zeroizing::new(String::new()), 0);
+			return (0..0, 0);
 		}
 
 		let scroll = self.horizontal_scroll(width);
@@ -313,38 +373,37 @@ impl FieldEditor {
 		let mut start_byte = 0;
 		let mut start_column = 0;
 
-		for (byte, ch) in self.as_str().char_indices() {
+		for (byte, cluster) in self.as_str().grapheme_indices(true) {
 			if start_column >= scroll {
 				start_byte = byte;
 				break;
 			}
 
-			start_column += UnicodeWidthChar::width(ch).unwrap_or(0);
-			start_byte = byte + ch.len_utf8();
+			start_column += cluster.width();
+			start_byte = byte + cluster.len();
 		}
 
 		let mut end_byte = start_byte;
 		let mut visible_width = 0;
 
-		for ch in self.as_str()[start_byte..].chars() {
-			let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
+		for cluster in self.as_str()[start_byte..].graphemes(true) {
+			let ch_width = cluster.width();
 
 			if visible_width + ch_width > width {
 				break;
 			}
 
 			visible_width += ch_width;
-			end_byte += ch.len_utf8();
+			end_byte += cluster.len();
 		}
 
-		// One exact-size allocation, wiped when dropped.
-		let visible = Zeroizing::new(self.as_str()[start_byte..end_byte].to_owned());
 		let cursor_column = self.cursor_display_column().saturating_sub(start_column);
 
-		(visible, cursor_column.min(width))
+		(start_byte..end_byte, cursor_column.min(width))
 	}
 
 	fn move_vertical(&mut self, direction: i32) -> bool {
+		self.anchor = None;
 		let current_start = line_start(self.as_str(), self.cursor);
 		let current_end = line_end(self.as_str(), self.cursor);
 		let current_column = self.preferred_column.unwrap_or_else(|| self.as_str()[current_start..self.cursor].chars().count());
@@ -419,6 +478,46 @@ fn line_end(text: &str, cursor: usize) -> usize {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn replaces_a_reverse_multiline_selection() {
+		let mut editor = FieldEditor::with_multiline_text(
+			"aน้ำ
+βz",
+		);
+		editor.select_to(
+			"aน้ำ
+β"
+			.len(),
+			false,
+		);
+		editor.select_to(1, true);
+		assert_eq!(
+			editor.selection(),
+			Some(
+				1.."aน้ำ
+β"
+				.len()
+			)
+		);
+		editor.insert('好');
+		assert_eq!(editor.text(), "a好z");
+		assert_eq!(editor.cursor(), "a好".len());
+		assert_eq!(editor.selection(), None);
+	}
+
+	#[test]
+	fn backspace_and_delete_remove_only_the_selected_text() {
+		for key in [KeyCode::Backspace, KeyCode::Delete] {
+			let mut editor = FieldEditor::with_text("abc");
+			editor.select_to(1, false);
+			editor.select_to(3, true);
+			editor.handle_key(KeyEvent::new(key, KeyModifiers::NONE));
+			assert_eq!(editor.text(), "a");
+			assert_eq!(editor.cursor(), 1);
+			assert_eq!(editor.selection(), None);
+		}
+	}
 
 	#[test]
 	fn starts_empty() {

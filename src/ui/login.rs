@@ -5,7 +5,7 @@ use ratatui::{
 	layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
 	style::Style,
 	text::{Line, Span},
-	widgets::{Block, Borders, Paragraph, Wrap},
+	widgets::{Paragraph, Wrap},
 };
 
 use crate::app::App;
@@ -38,7 +38,7 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 
 	let missing = database_missing(app);
 
-	enum BoxContent<'a> {
+	enum PromptContent<'a> {
 		Masked(&'a str),
 		Static(&'a str),
 	}
@@ -46,27 +46,23 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 	let version_title = app.db_version.as_ref().map(|v| format!(" {v} "));
 	let (title, content) = if app.creating_database {
 		if app.confirming_new_db_password {
-			(" Confirm master password ", BoxContent::Masked(&app.new_db_confirm))
+			(" Confirm master password ", PromptContent::Masked(&app.new_db_confirm))
 		} else {
-			(" New master password ", BoxContent::Masked(&app.password))
+			(" New master password ", PromptContent::Masked(&app.password))
 		}
 	} else if missing {
-		(" Database file not present ", BoxContent::Static("[c] Create the new database"))
+		(" Database file not present ", PromptContent::Static("[c] Create the new database"))
 	} else {
-		(version_title.as_deref().unwrap_or(""), BoxContent::Masked(&app.password))
+		(version_title.as_deref().unwrap_or(""), PromptContent::Masked(&app.password))
 	};
 
 	let input_text: Cow<'_, str> = match content {
-		BoxContent::Masked(buf) => Cow::Owned("•".repeat(buf.chars().count())),
-		BoxContent::Static(text) => Cow::Borrowed(text),
+		PromptContent::Masked(buf) => Cow::Owned(super::mask_password(buf)),
+		PromptContent::Static(text) => Cow::Borrowed(text),
 	};
-	let input = Paragraph::new(input_text.as_ref()).alignment(Alignment::Center).block(
-		Block::default()
-			.borders(Borders::ALL)
-			.border_style(Style::default().fg(app.theme.border))
-			.title(title)
-			.title_style(Style::default().fg(app.theme.error)),
-	);
+	let section = super::section(title, &app.theme, 1);
+	let inner = section.inner(input_area);
+	let input = Paragraph::new(input_text.as_ref()).alignment(Alignment::Center);
 	if !app.slim_mode {
 		let claws_style = Style::default().fg(app.theme.claws);
 		let claws_light_style = Style::default().fg(app.theme.claws_light);
@@ -158,7 +154,11 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 	};
 	let filename = Paragraph::new(path.to_string_lossy()).alignment(Alignment::Center).style(Style::default().fg(app.theme.warning));
 	frame.render_widget(filename, filename_area);
-	frame.render_widget(input, input_area);
+	if missing && !app.creating_database {
+		frame.render_widget(input.block(section), input_area);
+	} else {
+		super::draw_input(frame, input_area, section, input, &app.theme);
+	}
 	if let Some(error) = &app.login_error {
 		let error_area = Rect { x: input_area.x, y: input_area.y.saturating_add(input_area.height), width: input_area.width, height: 3 };
 
@@ -193,31 +193,18 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 		frame.render_widget(hint, hint_area);
 	}
 
-	// Keep cursor inside the box, but only while actually typing into it.
-	let typed_len = if app.creating_database {
-		if app.confirming_new_db_password {
-			app.new_db_confirm.chars().count()
-		} else {
-			app.password.chars().count()
-		}
-	} else if missing {
-		// Static prompt, nothing to place a cursor in.
+	// Only show the cursor when the prompt accepts text.
+	if missing && !app.creating_database {
 		return;
-	} else {
-		app.password.chars().count()
-	};
+	}
+	let typed_len = input_text.chars().count();
 
-	let inner = Block::default().borders(Borders::ALL).inner(input_area);
 	if inner.width == 0 || inner.height == 0 {
 		return;
 	}
 
 	let width = inner.width as usize;
-	let cursor_offset = if typed_len < width {
-		(width - typed_len) / 2 + typed_len
-	} else {
-		width - 1
-	};
+	let cursor_offset = if typed_len < width { (width - typed_len) / 2 + typed_len } else { width - 1 };
 
 	let cursor_x = inner.x.saturating_add(cursor_offset as u16);
 	frame.set_cursor_position((cursor_x, inner.y));

@@ -1,0 +1,231 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# buildpkgs - Build native kpgui .deb and .rpm packages
+#   (So run this on different architectures if you need that!)
+# Usage: buildpkgs [SOURCE_DIR] [OUTPUT_DIR]
+#   defaults: SOURCE_DIR: $PWD, OUTPUT_DIR: $PWD/dist
+# Required: sed dpkg-dev cargo python3 rpm pkg-config gzip
+
+umask 022
+
+fail(){
+	printf 'buildpkgs kpgui: %s\n' "$*" >&2
+	exit 1
+}
+
+[[ ${1:-} = --help || ${1:-} = -h ]] &&
+	# Tuned to the file preamble!
+	sed -n '2,7s/^# //p' "$0" &&
+	exit 0
+
+(($#>2)) &&
+	fail "usage: $0 [source-directory] [output-directory]"
+
+source_dir=$(cd -- "${1:-.}" && pwd -P) ||
+	fail "cannot open the source directory"
+
+output_dir=${2:-"$source_dir/dist"}
+maintainer=${DEB_MAINTAINER:-'<github.com/pepa65>'}
+revision=${DEB_REVISION:-1}
+rpm_release=${RPM_RELEASE:-1}
+
+[[ ! -f $source_dir/Cargo.toml || ! -f $source_dir/Cargo.lock ]] &&
+	fail "missing Cargo.toml or Cargo.lock in $source_dir"
+
+[[ ! -f $source_dir/icon48.png || ! -f $source_dir/icon256.png ]] &&
+	fail "missing icon48.png or icon256.png in $source_dir"
+
+[[ $maintainer = *$'\n'* || $maintainer = *$'\r'* ]] &&
+	fail "DEB_MAINTAINER must be a single line"
+
+[[ ! $rpm_release =~ ^[0-9]+$ ]] &&
+	fail "RPM_RELEASE must be numeric"
+
+for pkg in dpkg-dev cargo python3 rpm pkg-config gzip
+do
+	dpkg -l $pkg 2>/dev/null |grep -q ^ii &&
+		continue
+	type -p $pkg >/dev/null ||
+		fail "missing tool: $pkg"
+done
+
+architecture=$(dpkg --print-architecture)
+case "$architecture" in
+	amd64) rpm_arch=x86_64 ;;
+	arm64) rpm_arch=aarch64 ;;
+	*) fail "unsupported native architecture: $architecture"
+esac
+rust_target=$rpm_arch-unknown-linux-gnu
+
+# Ask Cargo where it places the executable, including CARGO_TARGET_DIR overrides.
+metadata=$(cd -- "$source_dir"; cargo metadata --locked --no-deps --format-version 1)
+package_info=$(python3 -c '
+import json, sys
+metadata = json.load(sys.stdin)
+package = next((p for p in metadata["packages"] if p["name"] == "kptui"), None)
+if package is None:
+	sys.exit("Cargo metadata contains no kptui package")
+version, plus, build = package["version"].partition("+")
+print(version.replace("-", "~", 1) + plus + build)
+print(metadata["target_directory"])
+' <<<"$metadata")
+
+IFS=$'\n' read -r upstream_version <<<"$package_info"
+target_dir=${package_info#*$'\n'}
+version="$upstream_version-$revision"
+dpkg --validate-version "$version" ||
+	fail "invalid Debian package version: $version"
+
+mkdir -p -- "$output_dir"
+output_dir=$(cd -- "$output_dir" && pwd -P)
+scratch=$(mktemp -d "$output_dir/.kpgui-pkgs.XXXXXXXX")
+trap 'rm -rf -- "$scratch"' EXIT
+
+(
+	cd -- "$source_dir"
+	cargo build --release --locked --features gui --target "$rust_target" --bin kpgui
+)
+
+stage="$scratch/debian/kpgui"
+doc_dir="$stage/usr/share/doc/kpgui"
+desktop="$stage/usr/share/applications/kpgui.desktop"
+install -d "$stage/usr/bin" "$stage/usr/share/applications" "$doc_dir"
+install -m 0755 "$target_dir/$rust_target/release/kpgui" "$stage/usr/bin/kpgui"
+install -m 0644 "$source_dir/README.md" "$doc_dir/README.md"
+
+cat >"$desktop" <<DESKTOP
+[Desktop Entry]
+Type=Application
+Name=kpgui
+GenericName=Password Manager
+Comment=Open and edit KeePass vaults
+Exec=/usr/bin/kpgui
+TryExec=/usr/bin/kpgui
+Icon=kpgui
+Terminal=false
+Categories=Utility;
+Keywords=KeePass;KDBX;password;vault;
+DESKTOP
+
+command -v desktop-file-validate >/dev/null &&
+	desktop-file-validate "$desktop"
+
+for size in 48 256
+do
+	icon_dir=$stage/usr/share/icons/hicolor/${size}x${size}/apps
+	install -d "$icon_dir"
+	cp "$source_dir/icon${size}.png" "$icon_dir/kpgui.png"
+done
+
+# Package the common files before adding Debian-specific metadata.
+# RPM invokes its scriptlets through paths that must not contain spaces.
+rpm_dir=$(mktemp -d /tmp/kpgui-rpm.XXXXXXXX)
+trap 'rm -rf -- "$scratch" "$rpm_dir"' EXIT
+cat >"$rpm_dir/kpgui.spec" <<SPEC
+Name: kpgui
+Version: $upstream_version
+Release: $rpm_release
+Summary: Linux GUI and terminal password manager for KeePass vaults
+License: GPL-3.0-or-later
+URL: https://github.com/pepa65/kptui
+
+%{!?_licensedir:%global _licensedir %{_datadir}/licenses}
+
+%description
+Open and edit KeePass KDBX vaults using the graphical frontend for kptui.
+The same executable also provides full and compact terminal modes.
+
+%install
+install -d "%{buildroot}%{_bindir}" "%{buildroot}%{_datadir}/applications"
+install -m 0755 "\$KPGUI_STAGE/usr/bin/kpgui" "%{buildroot}%{_bindir}/kpgui"
+install -m 0644 "\$KPGUI_STAGE/usr/share/applications/kpgui.desktop" "%{buildroot}%{_datadir}/applications/"
+cp -a "\$KPGUI_STAGE/usr/share/icons" "%{buildroot}%{_datadir}/"
+install -Dm 0644 "\$KPGUI_STAGE/usr/share/doc/kpgui/README.md" "%{buildroot}%{_docdir}/kpgui/README.md"
+install -Dm 0644 "\$KPGUI_LICENSE" "%{buildroot}%{_licensedir}/kpgui/LICENSE.md"
+
+%files
+%{_bindir}/kpgui
+%{_datadir}/applications/kpgui.desktop
+%{_datadir}/icons/hicolor/*/apps/kpgui.png
+%dir %{_docdir}/kpgui
+%doc %{_docdir}/kpgui/README.md
+%dir %{_licensedir}/kpgui
+%license %{_licensedir}/kpgui/LICENSE.md
+SPEC
+
+KPGUI_STAGE="$stage" KPGUI_LICENSE="$source_dir/LICENSE.md" \
+	rpmbuild -bb --nodeps --target "$rpm_arch" \
+		--define "_topdir $rpm_dir" \
+		--define "_tmppath $rpm_dir" \
+		--define 'debug_package %{nil}' "$rpm_dir/kpgui.spec"
+rpm_filename="kpgui-$upstream_version-$rpm_release.$rpm_arch.rpm"
+rpm_package="$rpm_dir/RPMS/$rpm_arch/$rpm_filename"
+rpm_dependencies=$(rpm --dbpath "$rpm_dir" -qp --requires "$rpm_package")
+[[ ! $rpm_dependencies = *'libpangocairo-1.0.so.0'* ]] &&
+	fail "rpmbuild did not generate the expected shared-library dependencies"
+
+cp -- "$rpm_package" "$scratch/$rpm_filename"
+install -d "$stage/DEBIAN"
+
+cat >"$doc_dir/copyright" <<COPYRIGHT
+Upstream-Name: kptui
+Upstream-Contact: https://github.com/pepa65/kptui
+Source: https://github.com/pepa65/kptui
+
+kpgui is built from the kptui project by Pombo, pepa65, and contributors.
+The kptui source declares GNU GPL version 3 or later. The GPL-3 license
+text is available in /usr/share/common-licenses/GPL-3 on Debian systems.
+
+The launcher icon comes from kpgui.png supplied with this build.
+COPYRIGHT
+
+[[ -n ${SOURCE_DATE_EPOCH:-} ]] &&
+	changelog_date=$(LC_ALL=C date --rfc-email --date="@$SOURCE_DATE_EPOCH") ||
+	changelog_date=$(LC_ALL=C date --rfc-email)
+
+gzip -n -c >"$doc_dir/changelog.Debian.gz" <<CHANGELOG
+kpgui ($version) unstable; urgency=medium
+
+  * Package the Linux GUI from the kptui checkout.
+
+ -- $maintainer  $changelog_date
+CHANGELOG
+
+cat >"$scratch/debian/control" <<CONTROL
+Source: kpgui
+Section: utils
+Priority: optional
+Maintainer: $maintainer
+
+Package: kpgui
+Architecture: any
+Depends: \${shlibs:Depends}
+Description: Linux GUI and terminal password manager for KeePass vaults
+ Open and edit KeePass KDBX vaults using the graphical frontend for kptui.
+CONTROL
+
+dependency_output=$(cd -- "$scratch" && dpkg-shlibdeps -O -edebian/kpgui/usr/bin/kpgui)
+dependencies=$(sed -n 's/^shlibs:Depends=//p' <<<"$dependency_output")
+[[ -z $dependencies ]] &&
+	fail "dpkg-shlibdeps produced no runtime dependencies"
+
+cat >"$stage/DEBIAN/control" <<CONTROL
+Package: kpgui
+Version: $version
+Section: utils
+Priority: optional
+Architecture: $architecture
+Maintainer: $maintainer
+Installed-Size: $(du --apparent-size -sk "$stage/usr" | cut -f1)
+Depends: $dependencies
+Homepage: https://github.com/pepa65/kptui
+Description: Linux GUI and terminal password manager for KeePass vaults
+ Open and edit KeePass KDBX vaults using the graphical frontend for kptui.
+ The same executable also provides full and compact terminal modes.
+CONTROL
+
+filename="kpgui_${version}_${architecture}.deb"
+dpkg-deb --root-owner-group --build "$stage" "$scratch/$filename"
+mv -f -- "$scratch/$filename" "$output_dir/$filename"
+mv -f -- "$scratch/$rpm_filename" "$output_dir/$rpm_filename"
+printf '%s\n' "$output_dir/$filename" "$output_dir/$rpm_filename"

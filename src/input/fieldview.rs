@@ -1,6 +1,7 @@
 use std::ops::Range;
 
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 /// Wraps `text` to `width` columns and returns byte ranges into `text`.
 /// Whitespace is preserved, nothing is copied, and every logical line
@@ -24,8 +25,8 @@ fn wrap_line(line: &str, base: usize, width: usize, out: &mut Vec<Range<usize>>)
 	let mut col = 0;
 	let mut last_break: Option<usize> = None;
 
-	for (i, ch) in line.char_indices() {
-		let w = UnicodeWidthChar::width(ch).unwrap_or(0);
+	for (i, cluster) in line.grapheme_indices(true) {
+		let w = cluster.width();
 
 		if col > 0 && col + w > width {
 			// Prefer breaking after the last whitespace; otherwise cut the word here.
@@ -34,17 +35,17 @@ fn wrap_line(line: &str, base: usize, width: usize, out: &mut Vec<Range<usize>>)
 			start = cut;
 			col = 0;
 			last_break = None;
-			for (j, c) in line[start..i].char_indices() {
-				col += UnicodeWidthChar::width(c).unwrap_or(0);
-				if c.is_whitespace() {
-					last_break = Some(start + j + c.len_utf8());
+			for (j, cluster) in line[start..i].grapheme_indices(true) {
+				col += cluster.width();
+				if cluster.chars().all(char::is_whitespace) {
+					last_break = Some(start + j + cluster.len());
 				}
 			}
 		}
 
 		col += w;
-		if ch.is_whitespace() {
-			last_break = Some(i + ch.len_utf8());
+		if cluster.chars().all(char::is_whitespace) {
+			last_break = Some(i + cluster.len());
 		}
 	}
 

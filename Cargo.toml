@@ -1,9 +1,10 @@
 [package]
 name = "kptui"
+default-run = "kptui"
 version = "0.35.1"
 edition = "2024"
 rust-version = "1.89.0"
-description = "Highly secure TUI password manager for KeePass KDBX vaults"
+description = "Highly secure TUI password manager for KeePass KDBX vaults (includes Linux GUI)"
 authors = ["Pombo <https://github.com/pomboverso>", "<github.com/pepa65>"]
 license = "GPL-3.0-or-later"
 repository = "https://github.com/pepa65/kptui"
@@ -21,6 +22,29 @@ pkg-url = "{repo}/releases/download/{version}/{name}"
 [package.metadata.binstall.overrides.aarch64-linux-android]
 pkg-url = "{repo}/releases/download/{version}/{name}_android"
 
+[[bin]]
+name = "kpgui"
+path = "src/bin/kpgui.rs"
+required-features = ["gui"]
+test = false
+
+[features]
+gui = ["dep:cairo-sys-rs", "dep:glib-sys", "dep:gobject-sys", "dep:pango-sys", "dep:pkg-config", "dep:x11rb", "dep:xkeysym", "rustix/event", "dep:smithay-client-toolkit", "dep:wayland-client", "dep:xkbcommon"]
+
+[build-dependencies]
+pkg-config = { version = "0.3", optional = true }
+
+[target.'cfg(all(target_os = "linux", target_env = "gnu"))'.dependencies]
+cairo-sys-rs = { version = "0.18", optional = true }
+glib-sys = { version = "0.18", optional = true }
+gobject-sys = { version = "0.18", optional = true }
+pango-sys = { version = "0.18", features = ["v1_44"], optional = true }
+x11rb = { version = "0.13", features = ["xkb"], optional = true }
+xkeysym = { version = "0.2", optional = true }
+smithay-client-toolkit = { version = "0.20", default-features = false, features = ["calloop"], optional = true }
+wayland-client = { version = "0.31", optional = true }
+xkbcommon = { version = "0.9", features = ["wayland"], optional = true }
+
 [dependencies]
 ratatui = "0.30"
 crossterm = "0.29"
@@ -33,6 +57,7 @@ toml = "1"
 keepass = { package = "kplib", version = "0.20" }
 chrono = "0.4"
 unicode-width = "0.2"
+unicode-segmentation = "1"
 zeroize = { version = "1", features = ["derive"] }
 
 [profile.release]
