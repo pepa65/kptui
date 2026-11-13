@@ -35,7 +35,7 @@ pub fn handle_settings_input(app: &mut App, key: KeyEvent) {
 	}
 
 	if app.importing_database {
-		handle_import_input(app, key.code);
+		handle_import_input(app, key);
 		return;
 	}
 
@@ -509,13 +509,16 @@ fn commit_password_change(app: &mut App) {
 fn start_import(app: &mut App) {
 	reset_import_state(app);
 	app.importing_database = true;
+	app.field_editor = Some(FieldEditor::default());
+	app.editing_field = true;
 	app.status = None;
 }
 
 fn reset_import_state(app: &mut App) {
 	app.importing_database = false;
 	app.import_step = ImportStep::Path;
-	app.import_path_buffer.clear();
+	app.field_editor = None;
+	app.editing_field = false;
 	app.import_kdbx_password_buffer.zeroize();
 	app.pending_import_path = None;
 }
@@ -525,50 +528,38 @@ fn cancel_import(app: &mut App) {
 	app.status = None;
 }
 
-fn handle_import_input(app: &mut App, key: KeyCode) {
-	match key {
+fn handle_path_input(app: &mut App, key: KeyEvent, confirm: fn(&mut App), cancel: fn(&mut App)) {
+	let Some(editor) = app.field_editor.as_mut() else { return };
+	match editor.handle_key(key) {
+		EditAction::Continue => app.status = None,
+		EditAction::Accept => confirm(app),
+		EditAction::Cancel => cancel(app),
+	}
+}
+
+fn handle_import_input(app: &mut App, key: KeyEvent) {
+	if app.import_step == ImportStep::Path {
+		handle_path_input(app, key, confirm_import_path, cancel_import);
+		return;
+	}
+
+	match key.code {
 		KeyCode::Char(c) => {
 			app.status = None;
-			let limit = app.max_len.max(1);
-
-			match app.import_step {
-				ImportStep::Path => {
-					if c.len_utf8() <= limit.saturating_sub(app.import_path_buffer.len()) {
-						app.import_path_buffer.push(c);
-					}
-				}
-				ImportStep::KdbxPassword => {
-					secret_push(&mut app.import_kdbx_password_buffer, c);
-				}
-			}
+			secret_push(&mut app.import_kdbx_password_buffer, c);
 		}
-
 		KeyCode::Backspace => {
 			app.status = None;
-
-			match app.import_step {
-				ImportStep::Path => {
-					app.import_path_buffer.pop();
-				}
-				ImportStep::KdbxPassword => {
-					secret_pop(&mut app.import_kdbx_password_buffer);
-				}
-			}
+			secret_pop(&mut app.import_kdbx_password_buffer);
 		}
-
-		KeyCode::Enter => match app.import_step {
-			ImportStep::Path => confirm_import_path(app),
-			ImportStep::KdbxPassword => confirm_import_kdbx_password(app),
-		},
-
+		KeyCode::Enter => confirm_import_kdbx_password(app),
 		KeyCode::Esc => cancel_import(app),
-
 		_ => {}
 	}
 }
 
 fn confirm_import_path(app: &mut App) {
-	let raw = app.import_path_buffer.trim();
+	let raw = app.field_editor.as_ref().map_or("", |editor| editor.text().trim());
 
 	if raw.is_empty() {
 		app.status = Some("enter a file path".to_string());
@@ -587,6 +578,8 @@ fn confirm_import_path(app: &mut App) {
 			app.pending_import_path = Some(path);
 			app.import_kdbx_password_buffer.zeroize();
 			app.import_step = ImportStep::KdbxPassword;
+			app.field_editor = None;
+			app.editing_field = false;
 			app.status = None;
 		}
 
@@ -646,13 +639,16 @@ fn finish_import(app: &mut App, imported: Vec<Entry>, source: &Path) {
 fn start_export(app: &mut App) {
 	reset_export_state(app);
 	app.exporting_database = true;
+	app.field_editor = Some(FieldEditor::default());
+	app.editing_field = true;
 	app.status = None;
 }
 
 fn reset_export_state(app: &mut App) {
 	app.exporting_database = false;
 	app.export_step = ExportStep::Path;
-	app.export_path_buffer.clear();
+	app.field_editor = None;
+	app.editing_field = false;
 	app.pending_export_path = None;
 }
 
@@ -662,39 +658,20 @@ fn cancel_export(app: &mut App) {
 }
 
 fn handle_export_input(app: &mut App, key: KeyEvent) {
+	if app.export_step == ExportStep::Path {
+		handle_path_input(app, key, confirm_export_path, cancel_export);
+		return;
+	}
+
 	match key.code {
-		KeyCode::Char(c) => {
-			app.status = None;
-
-			if app.export_step == ExportStep::Path {
-				let limit = app.max_len.max(1);
-				if c.len_utf8() <= limit.saturating_sub(app.export_path_buffer.len()) {
-					app.export_path_buffer.push(c);
-				}
-			}
-		}
-
-		KeyCode::Backspace => {
-			app.status = None;
-
-			if app.export_step == ExportStep::Path {
-				app.export_path_buffer.pop();
-			}
-		}
-
-		KeyCode::Enter => match app.export_step {
-			ExportStep::Path => confirm_export_path(app),
-			ExportStep::Confirm => do_export(app),
-		},
-
+		KeyCode::Enter => do_export(app),
 		KeyCode::Esc => cancel_export(app),
-
 		_ => {}
 	}
 }
 
 fn confirm_export_path(app: &mut App) {
-	let raw = app.export_path_buffer.trim();
+	let raw = app.field_editor.as_ref().map_or("", |editor| editor.text().trim());
 
 	if raw.is_empty() {
 		app.status = Some("enter a file path".to_string());
@@ -718,6 +695,8 @@ fn confirm_export_path(app: &mut App) {
 
 	if plaintext || overwrite {
 		app.export_step = ExportStep::Confirm;
+		app.field_editor = None;
+		app.editing_field = false;
 		app.status = None;
 	} else {
 		do_export(app);

@@ -71,7 +71,7 @@ pub(crate) struct EditView {
 }
 
 impl EditView {
-	fn new(area: Rect, rows: impl Iterator<Item = Range<usize>>, text: &str, selection: Option<&Range<usize>>) -> Self {
+	pub(super) fn new(area: Rect, rows: impl Iterator<Item = Range<usize>>, text: &str, selection: Option<&Range<usize>>) -> Self {
 		#[cfg(all(feature = "gui", target_os = "linux", target_env = "gnu"))]
 		{
 			let rows: Vec<_> = rows.collect();

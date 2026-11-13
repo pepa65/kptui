@@ -8,7 +8,9 @@ use ratatui::{
 	widgets::{Clear, List, ListItem, Paragraph},
 };
 
-use crate::app::App;
+use super::edit::EditView;
+use crate::app::{App, ExportStep, ImportStep};
+use crate::input::fieldedit::FieldEditor;
 use crate::input::settings::{AUTO_EXIT_ROW, LOCKED_ROW_COUNT, UNLOCKED_ROW_COUNT};
 use crate::util::wrap_help_items;
 use unicode_width::UnicodeWidthStr;
@@ -44,11 +46,11 @@ fn import_help_items(slim_mode: bool) -> &'static [&'static str] {
 	if slim_mode { &["[Enter]", "[Esc]"] } else { &["[Enter] Continue", "[Esc] Cancel"] }
 }
 
-pub fn draw_settings(frame: &mut Frame, app: &mut App) {
+pub fn draw_settings(frame: &mut Frame, app: &mut App) -> Option<EditView> {
 	if app.exporting_database {
-		draw_export(frame, app);
+		return draw_export(frame, app);
 	} else if app.importing_database {
-		draw_import(frame, app);
+		return draw_import(frame, app);
 	} else if app.changing_keyfile {
 		draw_change_keyfile(frame, app);
 	} else if app.changing_password {
@@ -58,6 +60,7 @@ pub fn draw_settings(frame: &mut Frame, app: &mut App) {
 	} else {
 		draw_main_settings(frame, app);
 	}
+	None
 }
 
 fn draw_main_settings(frame: &mut Frame, app: &mut App) {
@@ -91,8 +94,8 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 		"Auto-exit (seconds)",
 		"Theme",
 		"Change master password",
-		"Import database",
-		"Export database",
+		"Import data",
+		"Export data",
 	];
 
 	let path_value =
@@ -275,7 +278,20 @@ fn draw_change_keyfile(frame: &mut Frame, app: &mut App) {
 	frame.render_widget(Paragraph::new(help_text).style(accent), vertical[3]);
 }
 
-fn draw_import(frame: &mut Frame, app: &mut App) {
+fn draw_path_input(frame: &mut Frame, area: Rect, title: &str, editor: &FieldEditor, theme: &crate::theme::Theme) -> EditView {
+	let section = super::section(title, theme, 1);
+	let field_area = section.inner(area);
+	let (visible, cursor_column) = editor.single_line_range(usize::from(field_area.width));
+	let text = editor.text();
+	super::draw_input(frame, area, section, Paragraph::new(&text[visible.clone()]), theme);
+	let selection = editor.selection();
+	if field_area.height > 0 && selection.is_none() && cursor_column < usize::from(field_area.width) {
+		frame.set_cursor_position((field_area.x + cursor_column as u16, field_area.y));
+	}
+	EditView::new(field_area, std::iter::once(visible), text, selection.as_ref())
+}
+
+fn draw_import(frame: &mut Frame, app: &mut App) -> Option<EditView> {
 	let full_area = frame.area();
 
 	let help_width = full_area.width.saturating_sub(2);
@@ -295,31 +311,28 @@ fn draw_import(frame: &mut Frame, app: &mut App) {
 		.split(input_row);
 
 	let input_area = horizontal[1];
-	app.max_len = input_area.width.saturating_sub(2) as usize;
-
-	let masked = matches!(app.import_step, crate::app::ImportStep::KdbxPassword);
-
-	let title = match app.import_step {
-		crate::app::ImportStep::Path => " Import from file (.kdbx/.csv/.json) ",
-		crate::app::ImportStep::KdbxPassword => " Password for that vault ",
+	let view = match app.import_step {
+		ImportStep::Path => app.field_editor.as_ref().map(|editor| {
+			draw_path_input(frame, input_area, " Import from file (.kdbx/.csv/.json) ", editor, &app.theme)
+		}),
+		ImportStep::KdbxPassword => {
+			let masked = super::mask_password(&app.import_kdbx_password_buffer);
+			let cursor_x = centered_cursor_x(input_area, masked.width());
+			let section = super::section(" Password for that vault ", &app.theme, 1);
+			let input = Paragraph::new(masked).alignment(Alignment::Center);
+			super::draw_input(frame, input_area, section, input, &app.theme);
+			if input_area.height > 1 {
+				frame.set_cursor_position((cursor_x, input_area.y.saturating_add(1)));
+			}
+			None
+		}
 	};
-
-	let buf = match app.import_step {
-		crate::app::ImportStep::Path => &app.import_path_buffer,
-		crate::app::ImportStep::KdbxPassword => &app.import_kdbx_password_buffer,
-	};
-
-	let display_text: Cow<'_, str> = if masked { Cow::Owned(super::mask_password(buf)) } else { Cow::Borrowed(buf.as_str()) };
-
-	let input = Paragraph::new(display_text.as_ref()).alignment(Alignment::Center);
-
-	super::draw_input(frame, input_area, super::section(title, &app.theme, 1), input, &app.theme);
 
 	let hint_area = Rect { x: input_area.x, y: input_area.y.saturating_add(input_area.height), width: input_area.width, height: 1 };
 
 	let default_hint = match app.import_step {
-		crate::app::ImportStep::Path => "only Name, User, Password, URL, TOTP and Notes are imported",
-		crate::app::ImportStep::KdbxPassword => "that file's master password (not for this vault!)",
+		ImportStep::Path => "only Name, User, Password, URL, TOTP and Notes are imported",
+		ImportStep::KdbxPassword => "that file's master password (not for this vault!)",
 	};
 	let hint_text = app.status.as_deref().unwrap_or(default_hint);
 	let hint_style = if app.status.is_some() { Style::new().fg(app.theme.error) } else { Style::new().fg(app.theme.warning) };
@@ -328,18 +341,13 @@ fn draw_import(frame: &mut Frame, app: &mut App) {
 
 	frame.render_widget(hint, hint_area);
 
-	let typed_len = display_text.as_ref().width();
-	let cursor_x = centered_cursor_x(input_area, typed_len);
-	if input_area.height > 1 {
-		frame.set_cursor_position((cursor_x, input_area.y.saturating_add(1)));
-	}
-
 	let accent = Style::new().fg(app.theme.accent);
 	let help_text = help_lines.iter().map(|line| format!("  {line}")).collect::<Vec<_>>().join("\n");
 	frame.render_widget(Paragraph::new(help_text).style(accent), vertical[3]);
+	view
 }
 
-fn draw_export(frame: &mut Frame, app: &mut App) {
+fn draw_export(frame: &mut Frame, app: &mut App) -> Option<EditView> {
 	let full_area = frame.area();
 
 	let help_width = full_area.width.saturating_sub(2);
@@ -359,27 +367,23 @@ fn draw_export(frame: &mut Frame, app: &mut App) {
 		.split(input_row);
 
 	let input_area = horizontal[1];
-	app.max_len = input_area.width.saturating_sub(2) as usize;
-
-	let title = match app.export_step {
-		crate::app::ExportStep::Path => " Export to file (.kdbx/.csv/.json) ",
-		crate::app::ExportStep::Confirm => " Confirm export ",
+	let view = match app.export_step {
+		ExportStep::Path => app.field_editor.as_ref().map(|editor| {
+			draw_path_input(frame, input_area, " Export to file (.kdbx/.csv/.json) ", editor, &app.theme)
+		}),
+		ExportStep::Confirm => {
+			let section = super::section(" Confirm export ", &app.theme, 1);
+			let path = app.pending_export_path.as_deref().map(|path| path.to_string_lossy()).unwrap_or_default();
+			frame.render_widget(Paragraph::new(path.as_ref()).block(section), input_area);
+			None
+		}
 	};
-
-	let input = Paragraph::new(app.export_path_buffer.as_str()).alignment(Alignment::Center);
-
-	let section = super::section(title, &app.theme, 1);
-	if matches!(app.export_step, crate::app::ExportStep::Path) {
-		super::draw_input(frame, input_area, section, input, &app.theme);
-	} else {
-		frame.render_widget(input.block(section), input_area);
-	}
 
 	let hint_area = Rect { x: input_area.x, y: input_area.y.saturating_add(input_area.height), width: input_area.width, height: 1 };
 
 	let default_hint = match app.export_step {
-		crate::app::ExportStep::Path => "only Name, User, Password, URL, and TOTP are exported",
-		crate::app::ExportStep::Confirm => {
+		ExportStep::Path => "only Name, User, Password, URL, and TOTP are exported",
+		ExportStep::Confirm => {
 			let path = app.pending_export_path.as_deref();
 			let plaintext = path
 				.and_then(|p| crate::export::detect_format(p).ok())
@@ -402,15 +406,10 @@ fn draw_export(frame: &mut Frame, app: &mut App) {
 
 	frame.render_widget(hint, hint_area);
 
-	let typed_len = app.export_path_buffer.chars().count();
-	let cursor_x = centered_cursor_x(input_area, typed_len);
-	if input_area.height > 1 {
-		frame.set_cursor_position((cursor_x, input_area.y.saturating_add(1)));
-	}
-
 	let accent = Style::new().fg(app.theme.accent);
 	let help_text = help_lines.iter().map(|line| format!("  {line}")).collect::<Vec<_>>().join("\n");
 	frame.render_widget(Paragraph::new(help_text).style(accent), vertical[3]);
+	view
 }
 
 fn draw_theme_picker(frame: &mut Frame, app: &mut App) {

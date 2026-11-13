@@ -113,13 +113,11 @@ pub struct App {
 
 	pub importing_database: bool,
 	pub import_step: ImportStep,
-	pub import_path_buffer: String,
 	pub import_kdbx_password_buffer: Zeroizing<String>,
 	pub pending_import_path: Option<PathBuf>,
 
 	pub exporting_database: bool,
 	pub export_step: ExportStep,
-	pub export_path_buffer: String,
 	pub pending_export_path: Option<PathBuf>,
 
 	pub login_error: Option<String>,
@@ -216,12 +214,10 @@ pub fn start(slim_mode: bool, password: Zeroizing<String>) -> App {
 		new_password_confirm: Zeroizing::new(String::with_capacity(SECRET_CAP)),
 		importing_database: false,
 		import_step: ImportStep::Path,
-		import_path_buffer: String::new(),
 		import_kdbx_password_buffer: Zeroizing::new(String::with_capacity(SECRET_CAP)),
 		pending_import_path: None,
 		exporting_database: false,
 		export_step: ExportStep::Path,
-		export_path_buffer: String::new(),
 		pending_export_path: None,
 		login_error: None,
 		last_activity: Instant::now(),
@@ -266,7 +262,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) -> Option<EditView> {
 		Screen::Login => draw_login(frame, app),
 		Screen::Index => draw_index(frame, app),
 		Screen::Edit => return draw_edit(frame, app),
-		Screen::Settings => draw_settings(frame, app),
+		Screen::Settings => return draw_settings(frame, app),
 	}
 	None
 }

@@ -272,7 +272,7 @@ impl Session {
 					self.last_click = None;
 				}
 			}
-			Input::Press { button: 1, x, y, .. } if self.app.screen == Screen::Edit && self.app.editing_field => {
+			Input::Press { button: 1, x, y, .. } if self.edit_view.is_some() && self.app.editing_field => {
 				self.last_click = None;
 				self.dragging = false;
 				if let (Some(view), Some(editor)) = (&self.edit_view, &mut self.app.field_editor) {
