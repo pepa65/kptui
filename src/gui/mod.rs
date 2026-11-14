@@ -251,7 +251,7 @@ impl Session {
 				let target = self
 					.viewport
 					.row_at(x, y)
-					.and_then(|row| field_at_position(GRID_AREA, self.app.slim_mode, column, row as u16))
+					.and_then(|row| field_at_position(GRID_AREA, self.app.slim_mode, self.app.tmux_copy(), column, row as u16))
 					.and_then(|(field, on_label)| {
 						if on_label {
 							self.app.edit_state.select(Some(field));
@@ -538,7 +538,7 @@ mod tests {
 	#[test]
 	fn entry_hit_test_distinguishes_labels_and_values() {
 		let area = Rect::new(0, 0, GRID.width, GRID.height);
-		let hit = |column, row| field_at_position(area, false, column, row);
+		let hit = |column, row| field_at_position(area, false, false, column, row);
 		assert_eq!(hit(0.0, 0), None);
 		for field in 0..5 {
 			assert_eq!(hit(0.0, field as u16 + 1), Some((field, true)));

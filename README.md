@@ -34,6 +34,10 @@
 * **Auto-exit**: The whole app can close itself automatically after a set period of inactivity
   in seconds (`0`: stays open indefinitely).
 * **Themeable**: Ships with a range of themes and supports custom themes.
+* **Copy to tmux (opt-in)**: With `tmux_copy = true` and kptui running inside tmux, Control-Y on an entry
+  copies the selected field (or the current TOTP code) to a tmux paste buffer, to paste with `prefix ]`.
+  Useful on a text console or over SSH, where there is no system clipboard.
+  The buffer is deleted after `tmux_clear` seconds, or earlier when kptui exits.
 * **Access Configuration from the app**: On the Login screen or the Index screen, give Control-C:
   - Configuration file: `~/.config/kptui/config.toml`
   - Database (default: `~/.local/share/kptui/default.kdbx`)
@@ -127,6 +131,8 @@ keyfile = "~/.local/share/kptui/default.keyx"  # Optional (empty for password-on
 kdf_iterations = 90  # Can be lower if less paranoid about being brute-forced
 auto_exit = 300  # Seconds of inactivity before exiting the app
 theme = "melange_dark.toml"  # Theme from ~/.local/share/kptui/themes
+tmux_copy = false  # Inside tmux, Control-Y on an entry copies the selected field to a tmux paste buffer
+tmux_clear = 30  # Seconds before tmux deletes the copied value (at least 1)
 ```
 
 All fields are optional, as the above are the default values.
@@ -144,6 +150,14 @@ All fields are optional, as the above are the default values.
   All edits and changes will be lost (0: never auto-exit).
 * When the app is open and the vault not locked, secrets are kept in memory!
 * When the app exits, there are no plaintext secrets left anywhere in memory.
+* Copying to tmux is off by default. When enabled, a copied value lives in the tmux server's memory until it is deleted:
+  - The value is piped into `tmux load-buffer -`, so it never shows up in process arguments or environments.
+  - kptui keeps track of a single buffer: copying again replaces it, and only that buffer is ever deleted.
+  - Every copy has its deletion after `tmux_clear` seconds scheduled in the tmux server (`run-shell -d`), so it
+    also happens if kptui gets killed or its pane is closed; on a normal exit kptui deletes the buffer right away.
+    This needs tmux 3.2 or newer: with an older tmux, nothing is copied.
+  - If another buffer gets created at the very same moment, kptui can't tell which one is its own:
+    it says so and leaves both alone.
 * Using encrypted swap or zram (or no swap) increases security.
 * Booting with kernel cmdline option `init_on_free=1` causes every freed page to get zeroed.
 * On Linux, some extra hardening takes place in the operation of kptui.

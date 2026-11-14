@@ -1,11 +1,14 @@
+use std::time::Instant;
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use keepass::config::DatabaseVersion;
 use zeroize::{Zeroize, Zeroizing};
 
-use crate::app::{App, Screen};
-use crate::db::{parse_totp_edit_value, save_database, totp_edit_value};
+use crate::app::{App, Screen, TotpCache};
+use crate::db::{current_totp_code, parse_totp_edit_value, save_database, totp_edit_value};
 use crate::input::command::preview_entry;
 use crate::input::fieldedit::{EditAction, FieldEditor};
+use crate::tmux::Copied;
 
 const FIELD_COUNT: usize = 6;
 const NAME_INDEX: usize = 0;
@@ -35,6 +38,7 @@ pub fn handle_edit_input(app: &mut App, key: KeyEvent) {
 				None => Some("Saving...".to_string()),
 			};
 		}
+		KeyCode::Char('y') if key.modifiers.contains(KeyModifiers::CONTROL) && app.tmux_copy() => copy_selected_field(app),
 		_ => {
 			app.status = None;
 			match key.code {
@@ -97,6 +101,40 @@ fn start_editing_field(app: &mut App) {
 
 	app.editing_field = true;
 	app.status = None;
+}
+
+fn copy_selected_field(app: &mut App) {
+	let selected = app.edit_state.selected().unwrap_or(0);
+	let Some(entry) = app.edit_entry.as_ref() else {
+		return;
+	};
+
+	// The code on screen may have expired since the last redraw.
+	if selected == TOTP_INDEX && app.totp_cache.as_ref().is_none_or(|cache| cache.expires <= Instant::now()) {
+		app.totp_cache = current_totp_code(&entry.totp).map(|t| TotpCache { code: t.code, expires: Instant::now() + t.valid_for });
+	}
+
+	let (label, value) = match selected {
+		NAME_INDEX => ("Name", entry.name.as_str()),
+		USER_INDEX => ("User", entry.user.as_str()),
+		PASSWORD_INDEX => ("Password", entry.password.as_str()),
+		URL_INDEX => ("URL", entry.url.as_str()),
+		TOTP_INDEX => ("TOTP code", app.totp_cache.as_ref().map_or("", |cache| cache.code.as_str())),
+		NOTES_INDEX => ("Notes", entry.notes.as_str()),
+		_ => return,
+	};
+
+	if value.is_empty() {
+		app.status = Some(format!("{label} is empty, nothing copied"));
+		return;
+	}
+
+	let clear_after = app.config.tmux_clear;
+	app.status = Some(match app.tmux_buffer.copy(value, clear_after) {
+		Ok(Copied::Clearing) => format!("{label} copied to tmux, cleared in {}s", clear_after.as_secs()),
+		Ok(Copied::Untracked) => format!("{label} copied to tmux, but can't clear it"),
+		Err(err) => format!("{label} not copied: {err:#}"),
+	});
 }
 
 fn handle_field_input(app: &mut App, key: KeyEvent) {
