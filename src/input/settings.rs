@@ -12,17 +12,19 @@ use crate::input::{secret_pop, secret_push};
 use crate::theme::load_theme;
 use crate::util::expand_tilde;
 
-pub const UNLOCKED_ROW_COUNT: usize = 8;
-pub const LOCKED_ROW_COUNT: usize = 5;
+pub const UNLOCKED_ROW_COUNT: usize = 10;
+pub const LOCKED_ROW_COUNT: usize = 7;
 
 pub const DATABASE_ROW: usize = 0;
 pub const KEYFILE_ROW: usize = 1;
 pub const ITERATIONS_ROW: usize = 2;
 pub const AUTO_EXIT_ROW: usize = 3;
 pub const THEME_ROW: usize = 4;
-pub const CHANGE_PASSWORD_ROW: usize = 5;
-pub const IMPORT_ROW: usize = 6;
-pub const EXPORT_ROW: usize = 7;
+pub const TMUX_COPY_ROW: usize = 5;
+pub const TMUX_CLEAR_ROW: usize = 6;
+pub const CHANGE_PASSWORD_ROW: usize = 7;
+pub const IMPORT_ROW: usize = 8;
+pub const EXPORT_ROW: usize = 9;
 
 fn visible_row_count(app: &App) -> usize {
 	if app.login_settings { LOCKED_ROW_COUNT } else { UNLOCKED_ROW_COUNT }
@@ -114,6 +116,8 @@ fn activate_selected(app: &mut App) {
 		ITERATIONS_ROW => start_editing_kdf_iterations(app),
 		AUTO_EXIT_ROW => start_editing_auto_exit(app),
 		THEME_ROW => start_choosing_theme(app),
+		TMUX_COPY_ROW => toggle_tmux_copy(app),
+		TMUX_CLEAR_ROW => start_editing_tmux_clear(app),
 		CHANGE_PASSWORD_ROW => start_change_password(app),
 		IMPORT_ROW => start_import(app),
 		EXPORT_ROW => start_export(app),
@@ -282,6 +286,22 @@ fn start_editing_auto_exit(app: &mut App) {
 	app.status = None;
 }
 
+fn toggle_tmux_copy(app: &mut App) {
+	app.config.tmux_copy = !app.config.tmux_copy;
+	let state = if app.config.tmux_copy { "on" } else { "off" };
+	app.status = Some(match save_config(&app.config) {
+		Ok(()) if app.config.tmux_copy && !crate::tmux::available() => "tmux copy on (only works inside tmux)".to_string(),
+		Ok(()) => format!("tmux copy {state}"),
+		Err(err) => format!("couldn't save config: {err}"),
+	});
+}
+
+fn start_editing_tmux_clear(app: &mut App) {
+	app.field_editor = Some(FieldEditor::with_text(app.config.tmux_clear.as_secs().to_string()));
+	app.editing_field = true;
+	app.status = None;
+}
+
 fn handle_field_input(app: &mut App, key: KeyEvent) {
 	let Some(editor) = app.field_editor.as_mut() else {
 		app.editing_field = false;
@@ -355,6 +375,18 @@ fn commit_field(app: &mut App) {
 
 		AUTO_EXIT_ROW => match parse_seconds(&value) {
 			Ok(secs) => app.config.auto_exit = Duration::from_secs(secs),
+			Err(err) => {
+				app.status = Some(err);
+				return;
+			}
+		},
+
+		TMUX_CLEAR_ROW => match parse_seconds(&value) {
+			Ok(0) => {
+				app.status = Some("tmux clear must be at least 1 second".to_string());
+				return;
+			}
+			Ok(secs) => app.config.tmux_clear = Duration::from_secs(secs),
 			Err(err) => {
 				app.status = Some(err);
 				return;
@@ -828,9 +860,11 @@ fn settings_rows_are_contiguous() {
 	assert_eq!(ITERATIONS_ROW, 2);
 	assert_eq!(AUTO_EXIT_ROW, 3);
 	assert_eq!(THEME_ROW, 4);
-	assert_eq!(CHANGE_PASSWORD_ROW, 5);
-	assert_eq!(IMPORT_ROW, 6);
-	assert_eq!(EXPORT_ROW, 7);
-	assert_eq!(UNLOCKED_ROW_COUNT, 8);
-	assert_eq!(LOCKED_ROW_COUNT, 5);
+	assert_eq!(TMUX_COPY_ROW, 5);
+	assert_eq!(TMUX_CLEAR_ROW, 6);
+	assert_eq!(CHANGE_PASSWORD_ROW, 7);
+	assert_eq!(IMPORT_ROW, 8);
+	assert_eq!(EXPORT_ROW, 9);
+	assert_eq!(UNLOCKED_ROW_COUNT, 10);
+	assert_eq!(LOCKED_ROW_COUNT, 7);
 }

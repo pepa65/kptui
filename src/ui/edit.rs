@@ -23,11 +23,12 @@ const URL_INDEX: usize = 3;
 const TOTP_INDEX: usize = 4;
 const NOTES_INDEX: usize = 5;
 
-fn nav_help_items(slim_mode: bool) -> &'static [&'static str] {
-	if slim_mode {
-		&["[PgUpDn]", "[Enter]", "[^s]", "[Esc]"]
-	} else {
-		&["[PgUpDn] Scroll notes", "[Enter] Edit field", "[^s] Save", "[Esc] Close"]
+fn nav_help_items(slim_mode: bool, tmux_copy: bool) -> &'static [&'static str] {
+	match (slim_mode, tmux_copy) {
+		(true, false) => &["[PgUpDn]", "[Enter]", "[^s]", "[Esc]"],
+		(true, true) => &["[PgUpDn]", "[Enter]", "[^y]", "[^s]", "[Esc]"],
+		(false, false) => &["[PgUpDn] Scroll notes", "[Enter] Edit field", "[^s] Save", "[Esc] Close"],
+		(false, true) => &["[PgUpDn] Scroll notes", "[Enter] Edit field", "[^y] Copy", "[^s] Save", "[Esc] Close"],
 	}
 }
 
@@ -46,8 +47,8 @@ fn split_edit_area(area: Rect, help_line_count: usize) -> (Rect, Rect) {
 }
 
 #[cfg(all(feature = "gui", target_os = "linux", target_env = "gnu"))]
-pub(crate) fn field_at_position(area: Rect, slim_mode: bool, column: f64, row: u16) -> Option<(usize, bool)> {
-	let help_lines = wrap_help_items(nav_help_items(slim_mode), area.width);
+pub(crate) fn field_at_position(area: Rect, slim_mode: bool, tmux_copy: bool, column: f64, row: u16) -> Option<(usize, bool)> {
+	let help_lines = wrap_help_items(nav_help_items(slim_mode, tmux_copy), area.width);
 	let (body, _) = split_edit_area(area, help_lines.len());
 	let inner = body.inner(Margin { horizontal: 0, vertical: 1 });
 	let field = usize::from(row.checked_sub(inner.y)?).min(NOTES_INDEX);
@@ -183,7 +184,7 @@ pub(crate) fn readonly_view<'a>(area: Rect, app: &'a App, field: usize, selectio
 		return None;
 	}
 
-	let help_lines = wrap_help_items(nav_help_items(app.slim_mode), area.width);
+	let help_lines = wrap_help_items(nav_help_items(app.slim_mode, app.tmux_copy()), area.width);
 	let (body, _) = split_edit_area(area, help_lines.len());
 	let inner = body.inner(Margin { horizontal: 0, vertical: 1 });
 	let view = if field == NOTES_INDEX {
@@ -263,7 +264,11 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) -> Option<EditView> {
 	let placeholder = Style::new().fg(theme.text).bold();
 	let editing_style = Style::new().fg(theme.selection_fg).bg(theme.selection_bg);
 	let accent_style = Style::new().fg(theme.selection_fg).bg(theme.accent);
-	let help_items = if editing_field { field_help_items(app.slim_mode, selected == NOTES_INDEX) } else { nav_help_items(app.slim_mode) };
+	let help_items = if editing_field {
+		field_help_items(app.slim_mode, selected == NOTES_INDEX)
+	} else {
+		nav_help_items(app.slim_mode, app.tmux_copy())
+	};
 	let help_width = full_area.width;
 	let help_lines = wrap_help_items(help_items, help_width);
 	let (list_area, help_area) = split_edit_area(full_area, help_lines.len());
