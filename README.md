@@ -44,6 +44,7 @@
   - (Optional) keyfile
   - Auto-exit setting (in seconds, `0`: never auto-exit)
   - Theme selection (location: `~/.config/kptui/themes/`)
+  - tmux copy on/off and the tmux buffer clear delay
   - Change the master password
   - Import from file
   - Export to file
