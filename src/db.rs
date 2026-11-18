@@ -176,10 +176,6 @@ pub struct Entry {
 	pub date_last_modify: String,
 }
 
-fn format_date_time(dt: chrono::NaiveDateTime) -> String {
-	dt.format("%Y-%m-%d %H:%M:%S").to_string()
-}
-
 pub fn unlock_database(path: &Path, password: &Zeroizing<String>, keyfile_path: Option<&Path>) -> anyhow::Result<(Database, DatabaseKey, Vec<Entry>)> {
 	let mut file = File::open(path).with_context(|| format!("couldn't open {}", path.display()))?;
 
@@ -192,7 +188,7 @@ pub fn unlock_database(path: &Path, password: &Zeroizing<String>, keyfile_path: 
 	let entries = db
 		.iter_all_entries()
 		.map(|e| {
-			let date_last_modify = e.times.last_modification.map(format_date_time).unwrap_or_default();
+			let date_last_modify = e.times.last_modification.map(|dt| dt.strftime("%Y-%m-%d %H:%M:%S").to_string()).unwrap_or_default();
 
 			Entry {
 				id: Some(e.id()),
@@ -297,14 +293,14 @@ fn write_entry(db: &mut Database, entry: &mut Entry) -> anyhow::Result<()> {
 		Some(id) => {
 			let mut e = db.entry_mut(id).context("entry no longer exists in the database")?;
 			apply_fields(&mut e, entry);
-			entry.date_last_modify = e.times.last_modification.map(format_date_time).unwrap_or_default();
+			entry.date_last_modify = e.times.last_modification.map(|dt| dt.strftime("%Y-%m-%d %H:%M:%S").to_string()).unwrap_or_default();
 		}
 		None => {
 			let mut root = db.root_mut();
 			let mut e = root.add_entry();
 			apply_fields(&mut e, entry);
 			entry.id = Some(e.id());
-			entry.date_last_modify = e.times.last_modification.map(format_date_time).unwrap_or_default();
+			entry.date_last_modify = e.times.last_modification.map(|dt| dt.strftime("%Y-%m-%d %H:%M:%S").to_string()).unwrap_or_default();
 		}
 	}
 
