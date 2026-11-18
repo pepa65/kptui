@@ -7,6 +7,7 @@ mod gui;
 mod import;
 mod input;
 mod theme;
+mod tmux;
 mod ui;
 mod util;
 
