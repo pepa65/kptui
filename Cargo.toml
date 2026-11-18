@@ -3,7 +3,7 @@ name = "kptui"
 default-run = "kptui"
 version = "0.37.0"
 edition = "2024"
-rust-version = "1.92.0"
+rust-version = "1.95"
 description = "Highly secure TUI password manager for KeePass KDBX vaults (includes Linux GUI)"
 authors = ["<github.com/pepa65>", "Pombo <https://github.com/pomboverso>"]
 license = "GPL-3.0-or-later"
@@ -54,7 +54,7 @@ serde_json = "1"
 csv = "1"
 anyhow = "1"
 toml = "1"
-keepass = { package = "kplib", version = "0.21" }
+keepass = { package = "kplib", version = "0.22" }
 unicode-width = "0.2"
 unicode-segmentation = "1"
 zeroize = { version = "1", features = ["derive"] }
