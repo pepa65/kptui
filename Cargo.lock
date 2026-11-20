@@ -1056,9 +1056,9 @@ dependencies = [
 
 [[package]]
 name = "kplib"
-version = "0.22.0"
+version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "350dbcad4c34ef7d05a878dfdc4e061fd2c45986be4180b93eeca92e747147ff"
+checksum = "d512d3755c731c4d98968529a974c5ae2ff8af7214fbf0012cf4e84c9570070e"
 dependencies = [
  "aes",
  "base32",
@@ -1091,7 +1091,7 @@ dependencies = [
 
 [[package]]
 name = "kptui"
-version = "0.37.0"
+version = "0.37.1"
 dependencies = [
  "anyhow",
  "cairo-sys-rs",
@@ -1529,9 +1529,9 @@ dependencies = [
 
 [[package]]
 name = "pin-project-lite"
-version = "0.2.17"
+version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
+checksum = "c938015719552d665fd0553b90d96cd7ff58e83e4c061ca99e6bb78865a72752"
 
 [[package]]
 name = "pkg-config"
@@ -2379,9 +2379,9 @@ checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
 
 [[package]]
 name = "ucd-trie"
-version = "0.1.7"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2896d95c02a80c6d6a5d6e953d479f5ddf2dfdb6a244441010e373ac0fb88971"
+checksum = "8f20bdbfc9915686faa18fb5bbe8b4552778505defbf9f12289beefbc44092a6"
 
 [[package]]
 name = "unicode-ident"
