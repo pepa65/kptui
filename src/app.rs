@@ -7,8 +7,9 @@ use keepass::{Database, DatabaseKey};
 use ratatui::{
 	Frame, Terminal,
 	backend::CrosstermBackend,
+	layout::{Alignment, Rect},
 	style::Style,
-	widgets::{Block, ListState, TableState},
+	widgets::{Block, ListState, Paragraph, TableState, Wrap},
 };
 use zeroize::Zeroizing;
 
@@ -128,6 +129,8 @@ pub struct App {
 
 	pub should_quit: bool,
 	pub slim_mode: bool,
+
+	pub remote: crate::remote::SyncState,
 }
 
 impl App {
@@ -178,7 +181,15 @@ pub fn maybe_auto_exit(app: &mut App) {
 	app.should_quit = true;
 }
 
+#[cfg(all(feature = "gui", target_os = "linux", target_env = "gnu"))]
 pub fn start(slim_mode: bool, password: Zeroizing<String>) -> App {
+	let mut app = new_app(slim_mode, password);
+	open_database(&mut app);
+	app
+}
+
+/// Sets up the app from the config, without touching the database yet.
+fn new_app(slim_mode: bool, password: Zeroizing<String>) -> App {
 	let _ = crate::theme::ensure_default_themes();
 	let mut config = load_config().unwrap_or_default();
 	if config.default_database.is_none() {
@@ -189,7 +200,7 @@ pub fn start(slim_mode: bool, password: Zeroizing<String>) -> App {
 		}
 	}
 	let theme = load_theme(config.theme.as_deref()).unwrap_or_default();
-	let mut app = App {
+	App {
 		screen: Screen::Login,
 		login_settings: false,
 		db_version: None,
@@ -244,16 +255,34 @@ pub fn start(slim_mode: bool, password: Zeroizing<String>) -> App {
 		status: None,
 		should_quit: false,
 		slim_mode,
-	};
+		remote: crate::remote::SyncState::default(),
+	}
+}
+
+/// Updates a remote database's local copy, and unlocks it with a piped-in password.
+fn open_database(app: &mut App) {
+	crate::remote::open(app);
 	app.db_version = app.config.default_database.as_deref().and_then(crate::db::kdbx_version);
 	if !app.password.is_empty() {
-		if database_missing(&app) {
-			create_database_with_password(&mut app);
+		if database_missing(app) {
+			create_database_with_password(app);
 		} else {
-			attempt_unlock(&mut app);
+			attempt_unlock(app);
 		}
 	}
-	app
+	crate::remote::note_writes(app);
+}
+
+/// Shown while a remote database gets downloaded, which can take a few seconds.
+fn draw_connecting(frame: &mut Frame, app: &App, url: &str) {
+	let area = frame.area();
+	frame.render_widget(Block::default().style(Style::default().bg(app.theme.background)), area);
+	let text = Paragraph::new(format!("Getting {url} ..."))
+		.alignment(Alignment::Center)
+		.wrap(Wrap { trim: true })
+		.style(Style::default().fg(app.theme.warning));
+	let middle = Rect { y: area.y + area.height / 2, height: area.height.saturating_sub(area.height / 2), ..area };
+	frame.render_widget(text, middle);
 }
 
 pub fn draw(frame: &mut Frame, app: &mut App) -> Option<EditView> {
@@ -275,10 +304,16 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
 		Screen::Edit => handle_edit_input(app, key),
 		Screen::Settings => handle_settings_input(app, key),
 	}
+	crate::remote::note_writes(app);
 }
 
 pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: bool, password: Zeroizing<String>) -> io::Result<()> {
-	let mut app = start(slim_mode, password);
+	let mut app = new_app(slim_mode, password);
+	if let Some(remote) = app.config.remote.as_ref() {
+		let url = remote.url().to_string();
+		terminal.draw(|frame| draw_connecting(frame, &app, &url))?;
+	}
+	open_database(&mut app);
 	const TICK_RATE: Duration = Duration::from_millis(200);
 	let mut last_scroll = 0usize;
 	let mut last_len = 0usize;
@@ -307,6 +342,10 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 		}
 		if app.pending_save {
 			process_pending_save(&mut app);
+			continue;
+		}
+		if app.remote.pending {
+			crate::remote::process_pending(&mut app);
 			continue;
 		}
 

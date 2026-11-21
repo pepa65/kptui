@@ -85,7 +85,8 @@ pub fn draw_index(frame: &mut Frame, app: &mut App) {
 
 	let query_area = vertical[0];
 	let title = if app.search_notes { "Index [Name/User/Notes] " } else { "Index [Name/User] " };
-	let section = super::section(title, &app.theme, 0).padding(Padding::ZERO);
+	let title = if app.remote.unsynced { format!("{title}(not uploaded) ") } else { title.to_string() };
+	let section = super::section(&title, &app.theme, 0).padding(Padding::ZERO);
 	let field = section.inner(query_area);
 	app.max_len = usize::from(field.width).min(crate::input::SECRET_CAP);
 	let input_text = app.query.clone();

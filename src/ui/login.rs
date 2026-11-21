@@ -16,15 +16,24 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 	let area = frame.area().inner(Margin { horizontal: 1, vertical: 1 });
 
 	let logo_height = if app.slim_mode { 0 } else { 20 };
+	let note_height = if app.remote.note.is_some() { 2 } else { 0 };
 
 	let vertical = Layout::default()
 		.direction(Direction::Vertical)
-		.constraints([Constraint::Fill(1), Constraint::Length(logo_height), Constraint::Length(1), Constraint::Length(3), Constraint::Fill(1)])
+		.constraints([
+			Constraint::Fill(1),
+			Constraint::Length(logo_height),
+			Constraint::Length(1),
+			Constraint::Length(note_height),
+			Constraint::Length(3),
+			Constraint::Fill(1),
+		])
 		.split(area);
 
 	let logo_area = vertical[1];
 	let filename_area = vertical[2];
-	let input_row = vertical[3];
+	let note_area = vertical[3];
+	let input_row = vertical[4];
 
 	let horizontal = Layout::default()
 		.direction(Direction::Horizontal)
@@ -50,6 +59,8 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 		} else {
 			(" New master password ", PromptContent::Masked(&app.password))
 		}
+	} else if missing && app.remote.blocked {
+		(" Database not available ", PromptContent::Static("No local copy to open"))
 	} else if missing {
 		(" Database file not present ", PromptContent::Static("[c] Create the new database"))
 	} else {
@@ -145,15 +156,16 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 		.style(claws_style);
 		frame.render_widget(logo, logo_area);
 	}
-	let default_path;
-	let path = if let Some(path) = app.config.default_database.as_ref() {
-		path
-	} else {
-		default_path = default_new_database_path();
-		&default_path
-	};
-	let filename = Paragraph::new(path.to_string_lossy()).alignment(Alignment::Center).style(Style::default().fg(app.theme.warning));
+	let label = app.config.database_label().unwrap_or_else(|| default_new_database_path().display().to_string());
+	let filename = Paragraph::new(label.as_str()).alignment(Alignment::Center).style(Style::default().fg(app.theme.warning));
 	frame.render_widget(filename, filename_area);
+	if let Some(note) = &app.remote.note {
+		let note = Paragraph::new(note.as_str())
+			.alignment(Alignment::Center)
+			.wrap(Wrap { trim: true })
+			.style(Style::new().fg(app.theme.error));
+		frame.render_widget(note, note_area);
+	}
 	if missing && !app.creating_database {
 		frame.render_widget(input.block(section), input_area);
 	} else {
@@ -170,7 +182,7 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 		frame.render_widget(error_text, error_area);
 	} else if app.creating_database {
 		let hint_area = Rect { x: input_area.x, y: input_area.y.saturating_add(input_area.height), width: input_area.width, height: 2 };
-		let hint = Paragraph::new(vec![Line::from(format!("will create {}", path.display())), Line::from("[Enter] Confirm  [Esc] Cancel")])
+		let hint = Paragraph::new(vec![Line::from(format!("will create {label}")), Line::from("[Enter] Confirm  [Esc] Cancel")])
 			.alignment(Alignment::Center)
 			.style(Style::new().fg(app.theme.warning));
 
@@ -178,7 +190,7 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 	} else if missing {
 		let hint_area = Rect { x: input_area.x, y: input_area.y.saturating_add(input_area.height), width: input_area.width, height: 1 };
 
-		let hint = Paragraph::new("[c] Create database  [^c] Config  [Esc] Quit")
+		let hint = Paragraph::new(if app.remote.blocked { "[^c] Config  [Esc] Quit" } else { "[c] Create database  [^c] Config  [Esc] Quit" })
 			.alignment(Alignment::Center)
 			.style(Style::new().fg(app.theme.warning));
 

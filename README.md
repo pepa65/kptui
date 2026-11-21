@@ -34,9 +34,25 @@
 * **Auto-exit**: The whole app can close itself automatically after a set period of inactivity
   in seconds (`0`: stays open indefinitely).
 * **Themeable**: Ships with a range of themes and supports custom themes.
+* **Remote vaults over SFTP**: The database can be an `sftp://[user@]host[:port]/path` URL, used through
+  a local copy, like KeePass2Android does:
+  - `host` can be an alias from `~/.ssh/config`, and a path starting with `/~/` is relative to the login directory.
+    Spaces can be written as is, or as `%20`.
+  - It uses the system's OpenSSH `sftp` in batch mode, so `~/.ssh/config`, keys, `ssh-agent` and `known_hosts` apply.
+    Logging in must work without typing anything (a key without passphrase, or one in `ssh-agent`),
+    and the server's host key must already be known.
+  - On start, the server copy replaces the local copy (in `~/.local/share/kptui/remote/`).
+    When the server can't be reached, the local copy gets opened instead.
+  - Every save uploads the database. When the server copy changed in the meantime (another device saved),
+    both get merged first, entry by entry and field by field. If the same field was changed differently,
+    the newest version wins, and the other one is kept as an extra entry with " (conflict)" after its name.
+    An entry deleted on one side but changed on the other is kept.
+  - Changes that couldn't be uploaded stay in the local copy, and the Index title says "(not uploaded)".
+    They get uploaded after the next unlock, or the next save, when the server can be reached.
+  - Just opening and unlocking the database never writes to the server.
 * **Access Configuration from the app**: On the Login screen or the Index screen, give Control-C:
   - Configuration file: `~/.config/kptui/config.toml`
-  - Database (default: `~/.local/share/kptui/default.kdbx`)
+  - Database (default: `~/.local/share/kptui/default.kdbx`, or an `sftp://` URL)
   - (Optional) keyfile
   - Auto-exit setting (in seconds, `0`: never auto-exit)
   - Theme selection (location: `~/.config/kptui/themes/`)
@@ -122,7 +138,7 @@ kdf_iterations = 90  # The default
 The configuration file is at a fixed location: `~/.config/kptui/config.toml`.
 See `default_config.toml` in this repo:
 ```toml
-database = "~/.local/share/kptui/default.kdbx"
+database = "~/.local/share/kptui/default.kdbx"  # Or a remote one, like "sftp://me@nas/~/vault.kdbx"
 keyfile = "~/.local/share/kptui/default.keyx"  # Optional (empty for password-only vaults)
 kdf_iterations = 90  # Can be lower if less paranoid about being brute-forced
 auto_exit = 300  # Seconds of inactivity before exiting the app
@@ -144,6 +160,15 @@ All fields are optional, as the above are the default values.
   All edits and changes will be lost (0: never auto-exit).
 * When the app is open and the vault not locked, secrets are kept in memory!
 * When the app exits, there are no plaintext secrets left anywhere in memory.
+* With an `sftp://` database, only the encrypted database file is transferred, never the master password or keyfile:
+  - Transfers use OpenSSH's `sftp` with `BatchMode=yes`: it never prompts, and an unknown host key makes it fail.
+  - The URL can't hold a password, and hosts, users and paths that could pass as options are refused.
+  - The local copy and the last uploaded version (next to it, with `.base` after the name) are kept in
+    `~/.local/share/kptui/remote/`, which is only accessible to the user.
+  - An upload goes to a hidden file next to the database (`.NAME.kptui-upload`), which then gets renamed over it,
+    so the server file never ends up half-written. The database keeps its permissions on the server.
+  - Like any save by kptui, an upload only keeps what kptui stores (see above). Attachments, entry history,
+    icons and tags are not kept, so other clients sharing the database lose them too.
 * Using encrypted swap or zram (or no swap) increases security.
 * Booting with kernel cmdline option `init_on_free=1` causes every freed page to get zeroed.
 * On Linux, some extra hardening takes place in the operation of kptui.

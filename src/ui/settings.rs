@@ -109,7 +109,7 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 		Span::styled("(not set)", placeholder)
 	};
 	let values = [
-		path_value(app.config.default_database.as_deref()),
+		app.config.database_label().map_or_else(|| Span::styled("(not set)", placeholder), |label| Span::styled(label, normal)),
 		path_value(app.config.keyfile.as_deref()),
 		Span::styled(app.config.kdf_iterations.to_string(), normal),
 		Span::styled(app.config.auto_exit.as_secs().to_string(), normal),

@@ -5,6 +5,7 @@ use std::time::Duration;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
+use crate::remote::{Remote, sftp};
 use crate::util::expand_tilde;
 
 const SAMPLE_CONFIG: &str = include_str!("../default_config.toml");
@@ -19,7 +20,10 @@ fn sibling_tmp_path(path: &Path) -> PathBuf {
 }
 
 pub struct Config {
+	/// The file kptui opens: for a remote database, its local copy.
 	pub default_database: Option<PathBuf>,
+	/// Set when the database is an `sftp://` URL.
+	pub remote: Option<Remote>,
 	pub keyfile: Option<PathBuf>,
 	pub kdf_iterations: u64,
 	pub auto_exit: Duration,
@@ -30,10 +34,37 @@ impl Default for Config {
 	fn default() -> Self {
 		Self {
 			default_database: None,
+			remote: None,
 			keyfile: None,
 			kdf_iterations: KDF_ITERATIONS,
 			auto_exit: Duration::from_secs(AUTO_EXIT),
 			theme: None,
+		}
+	}
+}
+
+impl Config {
+	/// Sets the database from a path or an `sftp://` URL (empty: none).
+	pub fn set_database(&mut self, value: &str) {
+		let value = value.trim();
+		if value.is_empty() {
+			self.default_database = None;
+			self.remote = None;
+		} else if sftp::is_url(value) {
+			let remote = Remote::new(value);
+			self.default_database = Some(remote.cache_path());
+			self.remote = Some(remote);
+		} else {
+			self.default_database = Some(expand_tilde(value));
+			self.remote = None;
+		}
+	}
+
+	/// The database as configured: its path, or its URL.
+	pub fn database_label(&self) -> Option<String> {
+		match &self.remote {
+			Some(remote) => Some(remote.url().to_string()),
+			None => self.default_database.as_ref().map(|path| path.display().to_string()),
 		}
 	}
 }
@@ -78,13 +109,19 @@ pub fn load_config() -> anyhow::Result<Config> {
 fn parse_config(text: &str) -> anyhow::Result<Config> {
 	let raw: ConfigFile = toml::from_str(text)?;
 	let defaults = Config::default();
-	Ok(Config {
-		default_database: raw.database.or(raw.default_database).map(|s| expand_tilde(&s)),
+	let mut config = Config {
+		default_database: None,
+		remote: None,
 		keyfile: raw.keyfile.filter(|s| !s.is_empty()).map(|s| expand_tilde(&s)),
 		kdf_iterations: raw.kdf_iterations.unwrap_or(defaults.kdf_iterations),
 		auto_exit: raw.auto_exit.map(Duration::from_secs).unwrap_or(defaults.auto_exit),
 		theme: raw.theme,
-	})
+	};
+	match raw.database.or(raw.default_database) {
+		Some(database) if sftp::is_url(&database) => config.set_database(&database),
+		database => config.default_database = database.map(|s| expand_tilde(&s)),
+	}
+	Ok(config)
 }
 
 #[derive(Serialize)]
@@ -132,7 +169,7 @@ pub fn save_config(config: &Config) -> anyhow::Result<()> {
 
 fn serialize_config(config: &Config) -> anyhow::Result<String> {
 	let out = ConfigFileOut {
-		database: config.default_database.as_ref().map(|p| p.display().to_string()),
+		database: config.database_label(),
 		keyfile: config.keyfile.as_ref().map(|p| p.display().to_string()).unwrap_or_default(),
 		kdf_iterations: config.kdf_iterations,
 		auto_exit: config.auto_exit.as_secs(),
@@ -191,6 +228,35 @@ mod tests {
 		let text = serialize_config(&config).expect("config should serialize");
 		assert!(text.contains("keyfile = \"/tmp/passwords.keyx\""));
 		assert!(!text.contains("database = "));
+	}
+
+	#[test]
+	fn sftp_databases_open_a_local_copy_and_keep_their_url() {
+		let url = "sftp://me@nas/srv/Sync%20Configs/vault.kdbx";
+		let config = parse_config(&format!("database = \"{url}\"")).expect("config should parse");
+
+		let remote = config.remote.as_ref().expect("the database should be remote");
+		assert_eq!(remote.url(), url);
+		assert_eq!(config.default_database, Some(remote.cache_path()));
+		assert_eq!(config.database_label().as_deref(), Some(url));
+
+		let text = serialize_config(&config).expect("config should serialize");
+		assert!(text.contains(&format!("database = \"{url}\"")));
+	}
+
+	#[test]
+	fn setting_a_local_database_drops_the_remote_one() {
+		let mut config = Config::default();
+		config.set_database("sftp://nas/vault.kdbx");
+		assert!(config.remote.is_some());
+
+		config.set_database("/tmp/passwords.kdbx");
+		assert!(config.remote.is_none());
+		assert_eq!(config.database_label().as_deref(), Some("/tmp/passwords.kdbx"));
+
+		config.set_database("  ");
+		assert_eq!(config.default_database, None);
+		assert_eq!(config.database_label(), None);
 	}
 
 	#[test]

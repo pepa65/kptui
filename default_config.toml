@@ -1,4 +1,5 @@
-# Existing KDBX database to open (or new database to create)
+# Existing KDBX database to open (or new database to create),
+# or a remote one on an SFTP server, like "sftp://me@nas/~/vault.kdbx"
 database = "~/.local/share/kptui/default.kdbx"
 
 # Optional KeePass keyfile [empty for password-only vaults]

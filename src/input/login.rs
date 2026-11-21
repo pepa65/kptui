@@ -60,7 +60,7 @@ pub fn database_missing(app: &App) -> bool {
 
 fn handle_missing_database_input(app: &mut App, key: KeyCode) {
 	match crate::input::normalize_shortcut(key) {
-		KeyCode::Char('c') => {
+		KeyCode::Char('c') if !app.remote.blocked => {
 			if app.password.is_empty() {
 				start_create_database(app);
 			} else {
@@ -140,6 +140,11 @@ fn finish_create_database(app: &mut App) {
 }
 
 pub fn create_database_with_password(app: &mut App) {
+	if app.remote.blocked {
+		app.password.zeroize();
+		app.login_error = app.remote.note.clone();
+		return;
+	}
 	let path = app.config.default_database.clone().unwrap_or_else(default_new_database_path);
 
 	match create_database(&path, app.config.kdf_iterations, &app.password, app.config.keyfile.as_deref()) {
@@ -159,8 +164,9 @@ pub fn create_database_with_password(app: &mut App) {
 			app.refresh_filter();
 			app.screen = Screen::Index;
 
+			let label = app.config.database_label().unwrap_or_else(|| path.display().to_string());
 			app.status = Some(match save_result {
-				Ok(()) => format!("Created new database at {}", path.display()),
+				Ok(()) => format!("Created new database at {label}"),
 				Err(err) => format!("Database created, but couldn't save config: {err}"),
 			});
 		}
@@ -182,7 +188,11 @@ pub fn attempt_unlock(app: &mut App) {
 
 	match unlock_database(path, &app.password, app.config.keyfile.as_deref()) {
 		Ok((mut db, key, mut entries)) => {
-			let reconcile_error = reconcile_kdf_iterations(path, &key, &mut db, &mut entries, app.config.kdf_iterations).err();
+			// Just opening a remote database mustn't rewrite the file on the server.
+			let reconcile_error = match app.config.remote {
+				Some(_) => None,
+				None => reconcile_kdf_iterations(path, &key, &mut db, &mut entries, app.config.kdf_iterations).err(),
+			};
 
 			app.entries = entries;
 			app.kdbx = Some(db);

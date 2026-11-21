@@ -209,7 +209,7 @@ fn close_edit(app: &mut App) {
 	reset_edit_state(app);
 }
 
-fn reset_edit_state(app: &mut App) {
+pub(crate) fn reset_edit_state(app: &mut App) {
 	app.edit_entry = None;
 	app.edit_original = None;
 	app.edit_target = None;
@@ -261,6 +261,7 @@ pub(crate) fn process_pending_save(app: &mut App) {
 		app.index_state.select(Some(filtered_pos));
 		preview_entry(app);
 	}
+	crate::remote::note_writes(app);
 }
 
 fn persist_entry(app: &mut App, idx: usize) {

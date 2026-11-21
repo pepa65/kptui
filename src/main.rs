@@ -6,6 +6,7 @@ mod export;
 mod gui;
 mod import;
 mod input;
+mod remote;
 mod theme;
 mod ui;
 mod util;

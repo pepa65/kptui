@@ -185,8 +185,18 @@ pub fn unlock_database(path: &Path, password: &Zeroizing<String>, keyfile_path: 
 		None => anyhow::anyhow!("unlock failed with password: {err}"),
 	})?;
 
-	let entries = db
-		.iter_all_entries()
+	let entries = entries_of(&db);
+	Ok((db, key, entries))
+}
+
+/// Opens a database with an existing key.
+pub fn open_database(path: &Path, key: &DatabaseKey) -> anyhow::Result<Database> {
+	let mut file = File::open(path).with_context(|| format!("couldn't open {}", path.display()))?;
+	Database::open(&mut file, key.clone()).map_err(|err| anyhow::anyhow!("couldn't open {}: {err}", path.display()))
+}
+
+pub fn entries_of(db: &Database) -> Vec<Entry> {
+	db.iter_all_entries()
 		.map(|e| {
 			let date_last_modify = e.times.last_modification.map(|dt| dt.strftime("%Y-%m-%d %H:%M:%S").to_string()).unwrap_or_default();
 
@@ -201,9 +211,7 @@ pub fn unlock_database(path: &Path, password: &Zeroizing<String>, keyfile_path: 
 				date_last_modify,
 			}
 		})
-		.collect();
-
-	Ok((db, key, entries))
+		.collect()
 }
 
 pub fn create_database(

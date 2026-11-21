@@ -109,14 +109,18 @@ impl Session {
 	}
 
 	fn pending_save(&self) -> bool {
-		self.app.pending_save
+		self.app.pending_save || self.app.remote.pending
 	}
 
 	fn save_if_pending(&mut self) -> bool {
 		if !self.pending_save() {
 			return false;
 		}
-		process_pending_save(&mut self.app);
+		if self.app.pending_save {
+			process_pending_save(&mut self.app);
+		} else {
+			crate::remote::process_pending(&mut self.app);
+		}
 		self.redraw = true;
 		true
 	}

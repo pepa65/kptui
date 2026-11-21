@@ -121,8 +121,21 @@ fn activate_selected(app: &mut App) {
 	}
 }
 
+/// Closes the open database when another one gets selected, so that saving
+/// can't write it over the new one (or upload it there).
+fn lock_database(app: &mut App) {
+	if app.kdbx.is_none() {
+		return;
+	}
+	app.kdbx = None;
+	app.db_key = None;
+	app.entries.clear();
+	app.filtered.clear();
+	app.login_settings = true;
+}
+
 fn start_editing_database(app: &mut App) {
-	let value = app.config.default_database.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
+	let value = app.config.database_label().unwrap_or_default();
 
 	app.field_editor = Some(FieldEditor::with_text(value));
 	app.editing_field = true;
@@ -307,8 +320,27 @@ fn commit_field(app: &mut App) {
 	app.editing_field = false;
 	match selected {
 		DATABASE_ROW => {
-			app.config.default_database = if value.trim().is_empty() { None } else { Some(expand_tilde(value.trim())) };
+			if crate::remote::sftp::is_url(&value)
+				&& let Err(err) = crate::remote::sftp::Target::parse(&value)
+			{
+				app.status = Some(format!("invalid sftp URL: {err}"));
+				return;
+			}
+			let previous = app.config.database_label();
+			let was_remote = app.config.remote.is_some();
+			app.config.set_database(&value);
+			if previous != app.config.database_label() && (was_remote || app.config.remote.is_some()) {
+				lock_database(app);
+				crate::remote::open(app);
+			}
 			app.db_version = app.config.default_database.as_deref().and_then(crate::db::kdbx_version);
+			if let Some(note) = app.remote.note.clone() {
+				app.status = Some(match save_config(&app.config) {
+					Ok(()) => format!("saved. {note}"),
+					Err(err) => format!("couldn't save config: {err}"),
+				});
+				return;
+			}
 		}
 
 		KEYFILE_ROW => {
