@@ -7,6 +7,7 @@ use ratatui::{
 
 use crate::theme::Theme;
 
+pub mod attributes;
 pub mod edit;
 pub mod index;
 pub mod login;

@@ -7,15 +7,31 @@ use crate::db::{parse_totp_edit_value, save_database, totp_edit_value};
 use crate::input::command::preview_entry;
 use crate::input::fieldedit::{EditAction, FieldEditor};
 
-const FIELD_COUNT: usize = 6;
+const FIELD_COUNT: usize = 7;
 const NAME_INDEX: usize = 0;
 const USER_INDEX: usize = 1;
 const PASSWORD_INDEX: usize = 2;
 const URL_INDEX: usize = 3;
 const TOTP_INDEX: usize = 4;
-const NOTES_INDEX: usize = 5;
+const ATTRIBUTES_INDEX: usize = 5;
+const NOTES_INDEX: usize = 6;
+
+/// Saves the open entry (Control-S).
+pub(crate) fn request_save(app: &mut App) {
+	app.pending_save = true;
+	app.status = match app.kdbx.as_ref().map(|db| db.config.version.clone()) {
+		Some(DatabaseVersion::KDB4(1)) => Some("Saving...".to_string()),
+		Some(version) => Some(format!("Saving {version} to KDBX4.1...")),
+		None => Some("Saving...".to_string()),
+	};
+}
 
 pub fn handle_edit_input(app: &mut App, key: KeyEvent) {
+	if app.attributes_open {
+		crate::input::attributes::handle_attributes_input(app, key);
+		return;
+	}
+
 	if app.editing_field {
 		handle_field_input(app, key);
 		return;
@@ -27,14 +43,7 @@ pub fn handle_edit_input(app: &mut App, key: KeyEvent) {
 	}
 
 	match key.code {
-		KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-			app.pending_save = true;
-			app.status = match app.kdbx.as_ref().map(|db| db.config.version.clone()) {
-				Some(DatabaseVersion::KDB4(1)) => Some("Saving...".to_string()),
-				Some(version) => Some(format!("Saving {version} to KDBX4.1...")),
-				None => Some("Saving...".to_string()),
-			};
-		}
+		KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => request_save(app),
 		_ => {
 			app.status = None;
 			match key.code {
@@ -86,6 +95,11 @@ fn start_editing_field(app: &mut App) {
 
 		TOTP_INDEX => {
 			app.field_editor = Some(FieldEditor::with_text(totp_edit_value(&entry.totp)));
+		}
+
+		ATTRIBUTES_INDEX => {
+			crate::input::attributes::open(app);
+			return;
 		}
 
 		NOTES_INDEX => {
@@ -183,6 +197,7 @@ fn has_unsaved_changes(app: &App) -> bool {
 		|| entry.url != original.url
 		|| entry.totp != original.totp
 		|| entry.notes != original.notes
+		|| entry.attributes != original.attributes
 }
 
 fn handle_exit_confirmation(app: &mut App, key: KeyCode) {
@@ -220,6 +235,7 @@ fn reset_edit_state(app: &mut App) {
 	app.edit_state.select(None);
 	app.screen = Screen::Index;
 	app.totp_cache = None;
+	crate::input::attributes::close(app);
 }
 
 fn save_edit(app: &mut App) -> Option<usize> {

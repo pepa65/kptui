@@ -20,6 +20,7 @@ fn add_entry(app: &mut App) {
 	app.editing_field = true;
 	app.confirm_delete = false;
 	app.confirm_exit = false;
+	crate::input::attributes::close(app);
 	app.screen = Edit;
 }
 
@@ -42,6 +43,7 @@ pub fn preview_entry(app: &mut App) {
 	app.edit_state.select(Some(0));
 	app.confirm_delete = false;
 	app.confirm_exit = false;
+	crate::input::attributes::close(app);
 	app.screen = Edit;
 }
 

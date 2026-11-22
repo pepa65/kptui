@@ -244,7 +244,9 @@ impl Session {
 				}
 				_ => self.last_click = None,
 			},
-			Input::Press { button: 1, x, y, time } if self.app.screen == Screen::Edit && !self.app.editing_field && !self.app.confirm_exit => {
+			Input::Press { button: 1, x, y, time }
+				if self.app.screen == Screen::Edit && !self.app.attributes_open && !self.app.editing_field && !self.app.confirm_exit =>
+			{
 				self.readonly_press = None;
 				self.redraw |= self.readonly_selection.take().is_some();
 				let (column, row) = self.viewport.grid_position(x, y);
@@ -540,14 +542,14 @@ mod tests {
 		let area = Rect::new(0, 0, GRID.width, GRID.height);
 		let hit = |column, row| field_at_position(area, false, column, row);
 		assert_eq!(hit(0.0, 0), None);
-		for field in 0..5 {
+		for field in 0..6 {
 			assert_eq!(hit(0.0, field as u16 + 1), Some((field, true)));
 			assert_eq!(hit(20.0, field as u16 + 1), Some((field, false)));
 		}
-		assert_eq!(hit(0.0, 6), Some((5, true)));
-		assert_eq!(hit(20.0, 6), Some((5, false)));
-		assert_eq!(hit(0.0, 7), Some((5, false)));
-		assert_eq!(hit(0.0, GRID.height - 2), Some((5, false)));
+		assert_eq!(hit(0.0, 7), Some((6, true)));
+		assert_eq!(hit(20.0, 7), Some((6, false)));
+		assert_eq!(hit(0.0, 8), Some((6, false)));
+		assert_eq!(hit(0.0, GRID.height - 2), Some((6, false)));
 		assert_eq!(hit(0.0, GRID.height - 1), None);
 	}
 

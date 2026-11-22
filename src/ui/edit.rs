@@ -21,7 +21,8 @@ const USER_INDEX: usize = 1;
 const PASSWORD_INDEX: usize = 2;
 const URL_INDEX: usize = 3;
 const TOTP_INDEX: usize = 4;
-const NOTES_INDEX: usize = 5;
+const ATTRIBUTES_INDEX: usize = 5;
+const NOTES_INDEX: usize = 6;
 
 fn nav_help_items(slim_mode: bool) -> &'static [&'static str] {
 	if slim_mode {
@@ -151,6 +152,7 @@ fn value_area(inner: Rect, field: usize) -> Rect {
 		PASSWORD_INDEX => "Password: ",
 		URL_INDEX => "URL: ",
 		TOTP_INDEX => "TOTP: ",
+		ATTRIBUTES_INDEX => "Attributes: ",
 		_ => "",
 	};
 	let offset = label.width() as u16;
@@ -177,6 +179,7 @@ pub(crate) fn readonly_view<'a>(area: Rect, app: &'a App, field: usize, selectio
 		URL_INDEX => entry.url.as_str(),
 		TOTP_INDEX => app.totp_cache.as_ref()?.code.as_str(),
 		NOTES_INDEX => entry.notes.as_str(),
+		// Only the names show there, the attributes have their own view.
 		_ => return None,
 	};
 	if text.is_empty() {
@@ -232,6 +235,9 @@ fn compact_field<'a>(
 }
 
 pub fn draw_edit(frame: &mut Frame, app: &mut App) -> Option<EditView> {
+	if app.attributes_open {
+		return super::attributes::draw_attributes(frame, app);
+	}
 	let full_area = frame.area();
 	let entry = app.edit_entry.as_ref()?;
 	let mut edit_view = None;
@@ -292,12 +298,15 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) -> Option<EditView> {
 		}
 	};
 	let styles = [label_style, editing_style, normal, placeholder];
+	// The names only: values can be secret, and are shown in the attributes view.
+	let attribute_names = entry.attributes.iter().map(|attribute| attribute.name.as_str()).collect::<Vec<_>>().join(", ");
 	let items = vec![
 		compact_field(selected, NAME_INDEX, "Name", name, vec![], true, styles),
 		compact_field(selected, USER_INDEX, "User", user, vec![], true, styles),
 		compact_field(selected, PASSWORD_INDEX, "Password", "", vec![], !password_is_set, styles),
 		compact_field(selected, URL_INDEX, "URL", url, vec![], true, styles),
 		compact_field(selected, TOTP_INDEX, "TOTP", "", totp_extra, totp_raw.is_empty(), styles),
+		compact_field(selected, ATTRIBUTES_INDEX, "Attributes", &attribute_names, vec![], true, styles),
 	];
 	let title = if is_new_entry {
 		"New Entry ".to_owned()

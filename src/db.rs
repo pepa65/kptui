@@ -163,6 +163,27 @@ fn urlencoding_encode(input: &str) -> String {
 	out
 }
 
+/// An additional attribute of an entry: a custom string field, like the
+/// "Additional attributes" in KeePassXC's Advanced section.
+#[derive(Clone, Default, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
+pub struct Attribute {
+	pub name: String,
+	pub value: String,
+	/// Kept encrypted in memory by KeePass clients, and hidden on screen.
+	#[zeroize(skip)]
+	pub protected: bool,
+}
+
+/// Whether a field name is one of the standard fields, not an attribute.
+pub fn is_standard_field(name: &str) -> bool {
+	fields::KNOWN_FIELDS.contains(&name) || name == fields::OTP
+}
+
+/// The order attributes are shown in: by name, ignoring case.
+pub fn sort_attributes(attributes: &mut [Attribute]) {
+	attributes.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()).then_with(|| a.name.cmp(&b.name)));
+}
+
 #[derive(Clone, Default, Zeroize, ZeroizeOnDrop)]
 pub struct Entry {
 	#[zeroize(skip)]
@@ -173,6 +194,7 @@ pub struct Entry {
 	pub url: String,
 	pub totp: String,
 	pub notes: String,
+	pub attributes: Vec<Attribute>,
 	pub date_last_modify: String,
 }
 
@@ -189,6 +211,13 @@ pub fn unlock_database(path: &Path, password: &Zeroizing<String>, keyfile_path: 
 		.iter_all_entries()
 		.map(|e| {
 			let date_last_modify = e.times.last_modification.map(|dt| dt.strftime("%Y-%m-%d %H:%M:%S").to_string()).unwrap_or_default();
+			let mut attributes: Vec<Attribute> = e
+				.fields
+				.iter()
+				.filter(|(name, _)| !is_standard_field(name))
+				.map(|(name, value)| Attribute { name: name.clone(), value: value.get().clone(), protected: value.is_protected() })
+				.collect();
+			sort_attributes(&mut attributes);
 
 			Entry {
 				id: Some(e.id()),
@@ -198,6 +227,7 @@ pub fn unlock_database(path: &Path, password: &Zeroizing<String>, keyfile_path: 
 				url: e.get_url().unwrap_or_default().to_string(),
 				totp: resolve_totp(&e),
 				notes: e.get(fields::NOTES).unwrap_or_default().to_string(),
+				attributes,
 				date_last_modify,
 			}
 		})
@@ -314,12 +344,24 @@ pub fn delete_entry(path: &Path, key: &DatabaseKey, db: &mut Database, id: Entry
 }
 
 fn apply_fields(e: &mut EntryMut<'_>, entry: &Entry) {
-	let changed = e.update_unprotected(fields::TITLE, &entry.name)
+	let mut changed = e.update_unprotected(fields::TITLE, &entry.name)
 		| e.update_protected(fields::USERNAME, &entry.user)
 		| e.update_protected(fields::PASSWORD, &entry.password)
 		| e.update_unprotected(fields::URL, &entry.url)
 		| e.update_protected(fields::OTP, &entry.totp)
 		| e.update_protected(fields::NOTES, &entry.notes);
+
+	for attribute in &entry.attributes {
+		changed |= if attribute.protected {
+			e.update_protected(&attribute.name, &attribute.value)
+		} else {
+			e.update_unprotected(&attribute.name, &attribute.value)
+		};
+	}
+	// Attributes that were deleted or renamed.
+	let count = e.fields.len();
+	e.fields.retain(|name, _| is_standard_field(name) || entry.attributes.iter().any(|attribute| attribute.name == *name));
+	changed |= e.fields.len() != count;
 
 	if changed {
 		e.times.last_modification = Some(Times::now());
@@ -334,7 +376,7 @@ fn sibling_tmp_path(path: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-	use super::{build_database_key, create_database, reconcile_kdf_iterations, save_database, unlock_database};
+	use super::{Attribute, build_database_key, create_database, reconcile_kdf_iterations, save_database, unlock_database};
 	use keepass::db::fields;
 	use std::fs;
 	use std::path::{Path, PathBuf};
@@ -423,6 +465,48 @@ mod tests {
 		let entry = entries.iter().find(|entry| entry.name == "Entry without notes").expect("entry should be loaded");
 
 		assert!(entry.notes.is_empty());
+	}
+
+	#[test]
+	fn attributes_are_read_and_saved() {
+		let dir = TestDir::new();
+		let database_path = dir.join("attributes.kdbx");
+		let password = Zeroizing::new("correct horse".to_string());
+		let (mut database, key, mut entries) = create_database(&database_path, 10, &password, None).expect("database should be created");
+		{
+			let mut root = database.root_mut();
+			let mut entry = root.add_entry();
+			entry.set_unprotected(fields::TITLE, "GitHub");
+			entry.set_protected(fields::PASSWORD, "secret");
+			entry.set_protected("PIN", "1234");
+			entry.set_unprotected("Account ID", "42");
+			entry.set_unprotected("Old", "gone soon");
+		}
+		save_database(&database_path, &key, &mut database, &mut entries).expect("database should be saved");
+
+		let (mut database, key, mut entries) = unlock_database(&database_path, &password, None).expect("database should unlock");
+		let entry = &mut entries[0];
+		let names: Vec<(&str, &str, bool)> = entry.attributes.iter().map(|a| (a.name.as_str(), a.value.as_str(), a.protected)).collect();
+		assert_eq!(
+			names,
+			[("Account ID", "42", false), ("Old", "gone soon", false), ("PIN", "1234", true)],
+			"standard fields aren't attributes"
+		);
+
+		// Rename "Account ID", protect it, drop "Old", change "PIN", add "Recovery codes".
+		entry.attributes[0].name = "Account".to_string();
+		entry.attributes[0].protected = true;
+		entry.attributes.remove(1);
+		entry.attributes[1].value = "5678".to_string();
+		entry.attributes.push(Attribute { name: "Recovery codes".to_string(), value: "a-b\nc-d".to_string(), protected: true });
+		save_database(&database_path, &key, &mut database, &mut entries).expect("database should be saved");
+
+		let (database, _, entries) = unlock_database(&database_path, &password, None).expect("database should unlock");
+		let names: Vec<(&str, &str, bool)> = entries[0].attributes.iter().map(|a| (a.name.as_str(), a.value.as_str(), a.protected)).collect();
+		assert_eq!(names, [("Account", "42", true), ("PIN", "5678", true), ("Recovery codes", "a-b\nc-d", true)]);
+		let fields = &database.iter_all_entries().next().expect("entry should exist").fields;
+		assert_eq!(fields.len(), 6 + 3, "the standard fields, and the three attributes");
+		assert_eq!(entries[0].password, "secret");
 	}
 
 	#[test]

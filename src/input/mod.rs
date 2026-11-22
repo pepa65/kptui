@@ -1,3 +1,4 @@
+pub mod attributes;
 pub mod command;
 pub mod edit;
 pub mod fieldedit;

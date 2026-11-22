@@ -59,6 +59,15 @@ pub enum ExportStep {
 	Confirm,
 }
 
+/// What the attribute editor is changing.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum AttributeEdit {
+	/// The name of a new attribute (`None`), or of an existing one.
+	Name(Option<usize>),
+	/// The value of an attribute.
+	Value(usize),
+}
+
 pub struct TotpCache {
 	pub code: Zeroizing<String>,
 	pub expires: Instant,
@@ -89,6 +98,15 @@ pub struct App {
 	pub pending_save: bool,
 	pub confirm_delete: bool,
 	pub confirm_exit: bool,
+
+	/// The additional attributes of the open entry are shown.
+	pub attributes_open: bool,
+	pub attribute_state: ListState,
+	pub attribute_edit: Option<AttributeEdit>,
+	pub attribute_scroll: usize,
+	/// Whether protected attribute values are shown, instead of asterisks.
+	pub show_protected: bool,
+	pub confirm_attribute_delete: bool,
 	pub entries: Vec<Entry>,
 	pub filtered: Vec<usize>,
 	pub kdbx: Option<Database>,
@@ -234,6 +252,12 @@ pub fn start(slim_mode: bool, password: Zeroizing<String>) -> App {
 		pending_save: false,
 		confirm_delete: false,
 		confirm_exit: false,
+		attributes_open: false,
+		attribute_state: ListState::default(),
+		attribute_edit: None,
+		attribute_scroll: 0,
+		show_protected: false,
+		confirm_attribute_delete: false,
 		entries: Vec::new(),
 		filtered: Vec::new(),
 		kdbx: None,
