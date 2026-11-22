@@ -7,7 +7,7 @@ keyfile = "~/.local/share/kptui/default.keyx"
 # Argon2 KDF iterations (time cost) [default: 90]
 kdf_iterations = 90
 
-# Argon2 memory (M, MB and MiB all mean multiples of 1024 * 1024 bytes)
+# Argon2 memory (M here means multiples of 1024 * 1024 bytes)
 kdf_memory = "256M"
 
 # Seconds of inactivity before exiting the app [0: never auto-exit]

@@ -28,12 +28,7 @@ pub fn handle_edit_input(app: &mut App, key: KeyEvent) {
 
 	match key.code {
 		KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-			let version = match app.kdbx.as_ref().map(|db| &db.config.version) {
-				Some(DatabaseVersion::KDB4(0)) => DatabaseVersion::KDB4(0),
-				_ => DatabaseVersion::KDB4(1),
-			};
-			app.status = Some(format!("Saving as {version}..."));
-			app.pending_save = Some(version);
+			request_save(app);
 		}
 		_ => {
 			app.status = None;
@@ -188,8 +183,7 @@ fn has_unsaved_changes(app: &App) -> bool {
 fn handle_exit_confirmation(app: &mut App, key: KeyCode) {
 	match crate::input::normalize_shortcut(key) {
 		KeyCode::Char('y') => {
-			app.confirm_exit = false;
-			close_edit(app);
+			request_save(app);
 		}
 		KeyCode::Char('n') => {
 			app.confirm_exit = false;
@@ -204,9 +198,13 @@ fn handle_exit_confirmation(app: &mut App, key: KeyCode) {
 	}
 }
 
-fn close_edit(app: &mut App) {
-	save_edit(app);
-	reset_edit_state(app);
+fn request_save(app: &mut App) {
+	let version = match app.kdbx.as_ref().map(|db| &db.config.version) {
+		Some(DatabaseVersion::KDB4(0)) => DatabaseVersion::KDB4(0),
+		_ => DatabaseVersion::KDB4(1),
+	};
+	app.status = Some(format!("Saving as {version}..."));
+	app.pending_save = Some(version);
 }
 
 fn reset_edit_state(app: &mut App) {
@@ -254,6 +252,7 @@ pub(crate) fn process_pending_save(app: &mut App) {
 		return;
 	}
 
+	let close_after_save = app.confirm_exit;
 	let saved_idx = save_edit(app);
 	persist_entry(app, saved_idx, version);
 	reset_edit_state(app);
@@ -261,7 +260,9 @@ pub(crate) fn process_pending_save(app: &mut App) {
 		&& let Some(filtered_pos) = app.filtered.iter().position(|&idx| idx == saved_idx)
 	{
 		app.index_state.select(Some(filtered_pos));
-		preview_entry(app);
+		if !close_after_save {
+			preview_entry(app);
+		}
 	}
 }
 
@@ -286,6 +287,58 @@ fn persist_entry(app: &mut App, idx: Option<usize>, version: DatabaseVersion) {
 #[cfg(test)]
 mod save_shortcut_tests {
 	use super::*;
+
+	#[test]
+	fn confirmed_exit_writes_changes_to_disk() {
+		let path = std::env::temp_dir().join(format!("kptui-confirm-save-{}.kdbx", std::process::id()));
+		let password = Zeroizing::new("save-test".to_string());
+		let (mut db, key, _) = crate::db::create_database(&path, 1, &password, None, crate::config::MIB).unwrap();
+		db.config.version = DatabaseVersion::KDB4(0);
+		let mut app = crate::app::start(false, Zeroizing::new(String::new()));
+		app.kdbx = Some(db);
+		app.db_key = Some(key);
+		app.config.default_database = Some(path.clone());
+
+		// Cover a new entry, then updates to the existing entry in both formats.
+		for minor in [0, 1] {
+			app.kdbx.as_mut().unwrap().config.version = DatabaseVersion::KDB4(minor);
+			app.screen = Screen::Edit;
+			app.edit_target = if app.entries.is_empty() { None } else { Some(0) };
+			let original = app.entries.first().cloned().unwrap_or_default();
+			let mut edited = original.clone();
+			edited.name = format!("Name {minor}");
+			edited.user = format!("User {minor}");
+			edited.password = format!("Password {minor}");
+			edited.url = format!("https://example.com/{minor}");
+			edited.totp = "otpauth://totp/?secret=JBSWY3DPEHPK3PXP&digits=6&period=30".to_string();
+			edited.notes = format!("Notes {minor}\nSecond line");
+			app.edit_original = Some(original);
+			app.edit_entry = Some(edited.clone());
+
+			handle_edit_input(&mut app, KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+			assert!(app.confirm_exit);
+			handle_edit_input(&mut app, KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
+			assert!(app.confirm_exit);
+			assert_eq!(app.pending_save, Some(DatabaseVersion::KDB4(minor)));
+			assert_eq!(app.status, Some(format!("Saving as KDBX4.{minor}...")));
+			process_pending_save(&mut app);
+			assert!(app.screen == Screen::Index);
+			assert!(!app.confirm_exit);
+			assert_eq!(app.status, Some(format!("Saved as KDBX4.{minor}")));
+
+			let (reopened, _, entries) = crate::db::unlock_database(&path, &password, None).unwrap();
+			assert_eq!(reopened.config.version, DatabaseVersion::KDB4(minor));
+			assert_eq!(entries.len(), 1);
+			let entry = &entries[0];
+			assert_eq!(entry.name, edited.name);
+			assert_eq!(entry.user, edited.user);
+			assert_eq!(entry.password, edited.password);
+			assert_eq!(entry.url, edited.url);
+			assert_eq!(entry.totp, edited.totp);
+			assert_eq!(entry.notes, edited.notes);
+		}
+		std::fs::remove_file(path).unwrap();
+	}
 
 	#[test]
 	fn saves_database_when_selected_entry_is_absent() {
