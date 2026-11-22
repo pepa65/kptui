@@ -204,8 +204,12 @@ fn handle_exit_confirmation(app: &mut App, key: KeyCode) {
 	}
 }
 
+/// Answering "y" to "Save changes?": saves the entry to the database file,
+/// like Control-S does, before closing it.
 fn close_edit(app: &mut App) {
-	save_edit(app);
+	if let Some(index) = save_edit(app) {
+		persist_entry(app, index);
+	}
 	reset_edit_state(app);
 }
 
