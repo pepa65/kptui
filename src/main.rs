@@ -2,6 +2,7 @@ mod app;
 mod config;
 mod db;
 mod export;
+mod groups;
 #[cfg(all(feature = "gui", target_os = "linux", target_env = "gnu"))]
 mod gui;
 mod import;

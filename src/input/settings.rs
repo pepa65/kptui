@@ -764,6 +764,8 @@ fn finish_import(app: &mut App, imported: Vec<Entry>, source: &Path) {
 
 	for mut entry in imported {
 		entry.id = None;
+		// Its group is in the other database: it goes to the root group.
+		entry.group = None;
 		app.entries.push(entry);
 	}
 

@@ -32,6 +32,14 @@
 * **Configurable KDF memory**: The default for new databases is `256 MiB` (requiring RAM usage for most CPUs).
 * **Filtered search**: Start typing on the index screen to filter entries on Name & User,
   or on Name/User/Notes (toggled by `Ctrl-f`).
+* **Groups**: The Index browses the groups (folders) of the vault, like KeePass on the desktop:
+  the subgroups of the current group come first, with a `/` after their name, then its entries.
+  - `Enter` (or `Right`) opens a group, and `Esc` (or `Left`) goes back up. The title shows where you are, like `/Internet/Email`.
+  - Searching looks in all groups, and then shows the group of each entry instead of its date.
+  - New entries (`Ctrl-n`) go into the current group, and the title of an entry shows its group.
+  - `Esc` first clears the search, then goes up a group, then quits.
+  - Groups can't be created, renamed or deleted in kptui, but saving keeps them and the entries in them.
+  - A vault without groups works just like before.
 * **Hidden passwords**: In an entry, the password shows as dots until `Ctrl-r` shows it, and `Ctrl-r` hides it again.
   This works while editing the password too, and it's hidden again whenever an entry gets opened or closed.
 * **TOTP codes**: Generates live 2FA codes (current and next, with countdown)

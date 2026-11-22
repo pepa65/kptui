@@ -57,6 +57,7 @@ pub fn import_csv(path: &Path) -> anyhow::Result<Vec<Entry>> {
 
 		let entry = Entry {
 			id: None,
+			group: None,
 			name: get(&record, name_col),
 			user: get(&record, user_col),
 			password: get(&record, password_col),
@@ -136,6 +137,7 @@ impl From<BitwardenItem> for Entry {
 
 		Entry {
 			id: None,
+			group: None,
 			name: item.name,
 			user: login.username.unwrap_or_default(),
 			password: login.password.unwrap_or_default(),
@@ -167,6 +169,7 @@ impl From<FlatEntry> for Entry {
 	fn from(f: FlatEntry) -> Self {
 		Entry {
 			id: None,
+			group: None,
 			name: f.name,
 			user: f.username,
 			password: f.password,

@@ -331,12 +331,13 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) -> Option<EditView> {
 		compact_field(selected, URL_INDEX, "URL", url, vec![], true, styles),
 		compact_field(selected, TOTP_INDEX, "TOTP", "", totp_extra, totp_raw.is_empty(), styles),
 	];
+	let place = if app.groups.is_empty() { String::new() } else { format!(" in {}", app.group_path(entry.group)) };
 	let title = if is_new_entry {
-		"New Entry ".to_owned()
+		format!("New Entry{place} ")
 	} else if last_modified.is_empty() {
-		"Entry ".to_owned()
+		format!("Entry{place} ")
 	} else {
-		format!("Entry - modified {last_modified} ")
+		format!("Entry{place} - modified {last_modified} ")
 	};
 	let list = List::new(items).block(super::section(&title, theme, 0));
 	let mut list_state = app.edit_state;
