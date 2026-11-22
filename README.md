@@ -5,7 +5,7 @@
 [![license](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://github.com/pepa65/kptui/blob/main/LICENSE.md)
 [![downloads](https://img.shields.io/crates/d/kptui.svg)](https://crates.io/crates/kptui)
 
-# kptui 0.37.1
+# kptui 0.38.0
 **Highly secure TUI password manager for [KeePass](https://keepass.info/) KDBX vaults (includes Linux GUI)**
 * Compatible with the PassKeeper/KeePass KDBX `.kdb` and `.kdbx` file format.
 * By default, it preserves the database format of `KDBX4.0` or `KDBX4.1` files, which can be used by:
@@ -50,14 +50,14 @@
 
 ## Usage
 ```
-kptui 0.37.1 - TUI password manager for KeePass vaults
+kptui 0.38.0 - TUI password manager for KeePass vaults
 Usage:  kptui [slim | version | help]
 ```
 
 ## Installing
 ### Download static single-binary `kptui` for amd64 Linux
 ```
-wget https://github.com/pepa65/kptui/releases/download/0.37.1/kptui
+wget https://github.com/pepa65/kptui/releases/download/0.38.0/kptui
 sudo mv kptui /usr/local/bin
 sudo chown root:root /usr/local/bin/kptui
 sudo chmod +x /usr/local/bin/kptui
@@ -65,14 +65,14 @@ sudo chmod +x /usr/local/bin/kptui
 
 ### Download static single-binary `kptui` for Android
 ```
-wget -O kptui https://github.com/pepa65/kptui/releases/download/0.37.1/kptui_android
+wget -O kptui https://github.com/pepa65/kptui/releases/download/0.38.0/kptui_android
 sudo chmod +x /usr/local/bin/kptui
 ```
 
 ### Download deb/rpm `kpgui` for amd64 Linux
 ```
-wget https://github.com/pepa65/kptui/releases/download/0.37.1/kpgui_0.37.1-1_amd64.deb
-wget https://github.com/pepa65/kptui/releases/download/0.37.1/kpgui_0.37.1-1.x86_64.rpm
+wget https://github.com/pepa65/kptui/releases/download/0.38.0/kpgui_0.38.0-1_amd64.deb
+wget https://github.com/pepa65/kptui/releases/download/0.38.0/kpgui_0.38.0-1.x86_64.rpm
 ```
 
 ### Install with cargo
