@@ -15,8 +15,17 @@ const URL_INDEX: usize = 3;
 const TOTP_INDEX: usize = 4;
 const NOTES_INDEX: usize = 5;
 
+fn is_reveal_key(key: &KeyEvent) -> bool {
+	matches!(key.code, KeyCode::Char('r' | 'R')) && key.modifiers.contains(KeyModifiers::CONTROL)
+}
+
 pub fn handle_edit_input(app: &mut App, key: KeyEvent) {
 	if app.editing_field {
+		// Control-R shows or hides the password while editing it, too.
+		if is_reveal_key(&key) && app.edit_state.selected() == Some(PASSWORD_INDEX) {
+			app.show_password = !app.show_password;
+			return;
+		}
 		handle_field_input(app, key);
 		return;
 	}
@@ -29,6 +38,10 @@ pub fn handle_edit_input(app: &mut App, key: KeyEvent) {
 	match key.code {
 		KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
 			request_save(app);
+		}
+		_ if is_reveal_key(&key) => {
+			app.status = None;
+			app.show_password = !app.show_password;
 		}
 		_ => {
 			app.status = None;
@@ -218,6 +231,7 @@ fn reset_edit_state(app: &mut App) {
 	app.edit_state.select(None);
 	app.screen = Screen::Index;
 	app.totp_cache = None;
+	app.show_password = false;
 }
 
 fn save_edit(app: &mut App) -> Option<usize> {
