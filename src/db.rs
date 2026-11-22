@@ -207,8 +207,13 @@ pub fn unlock_database(path: &Path, password: &Zeroizing<String>, keyfile_path: 
 }
 
 pub fn create_database(
-	path: &Path, kdf_iterations: u64, password: &Zeroizing<String>, keyfile_path: Option<&Path>,
+	path: &Path, kdf_iterations: u64, password: &Zeroizing<String>, keyfile_path: Option<&Path>, kdf_memory: u64,
 ) -> anyhow::Result<(Database, DatabaseKey, Vec<Entry>)> {
+	anyhow::ensure!(
+		kdf_memory >= crate::config::MIB && kdf_memory % crate::config::MIB == 0,
+		"KDF memory must be a positive whole number of MiB"
+	);
+	anyhow::ensure!(kdf_memory / 1024 <= u64::from(u32::MAX), "KDF memory is too large");
 	if path.exists() {
 		anyhow::bail!("a file already exists at {}", path.display());
 	}
@@ -219,10 +224,10 @@ pub fn create_database(
 	let mut db = Database::new();
 	if let keepass::config::KdfConfig::Argon2 { ref mut iterations, ref mut memory, .. } = db.config.kdf_config {
 		*iterations = kdf_iterations;
-		*memory = 262144;
+		*memory = kdf_memory;
 	}
 	let key = build_database_key(password, keyfile_path)?;
-	write_to_disk(path, &key, &mut db)?;
+	write_to_disk(path, &key, &mut db, DatabaseVersion::KDB4(1))?;
 	Ok((db, key, Vec::new()))
 }
 
@@ -243,8 +248,9 @@ pub fn build_database_key(password: &Zeroizing<String>, keyfile_path: Option<&Pa
 }
 
 pub fn reconcile_kdf_iterations(path: &Path, key: &DatabaseKey, db: &mut Database, entries: &mut [Entry], configured_iterations: u64) -> anyhow::Result<bool> {
+	let previous_kdf = db.config.kdf_config.clone();
 	let iterations = match &mut db.config.kdf_config {
-		keepass::config::KdfConfig::Argon2 { iterations, .. } => iterations,
+		keepass::config::KdfConfig::Argon2 { iterations, .. } | keepass::config::KdfConfig::Argon2id { iterations, .. } => iterations,
 		_ => anyhow::bail!("database does not use Argon2"),
 	};
 
@@ -253,20 +259,29 @@ pub fn reconcile_kdf_iterations(path: &Path, key: &DatabaseKey, db: &mut Databas
 	}
 
 	*iterations = configured_iterations;
-	save_database(path, key, db, entries)?;
+	if let Err(err) = save_database(path, key, db, entries) {
+		db.config.kdf_config = previous_kdf;
+		return Err(err);
+	}
 	Ok(true)
 }
 
 pub fn save_database(path: &Path, key: &DatabaseKey, db: &mut Database, entries: &mut [Entry]) -> anyhow::Result<()> {
+	let version = match db.config.version {
+		DatabaseVersion::KDB4(0 | 1) => db.config.version.clone(),
+		_ => DatabaseVersion::KDB4(1),
+	};
+	save_database_as(path, key, db, entries, version)
+}
+
+pub fn save_database_as(path: &Path, key: &DatabaseKey, db: &mut Database, entries: &mut [Entry], version: DatabaseVersion) -> anyhow::Result<()> {
 	for entry in entries.iter_mut() {
 		write_entry(db, entry)?;
 	}
-	write_to_disk(path, key, db)
+	write_to_disk(path, key, db, version)
 }
 
-fn write_to_disk(path: &Path, key: &DatabaseKey, db: &mut Database) -> anyhow::Result<()> {
-	// keepass currently only supports writing KDBX 4.1, kptui always writes 4.1
-	db.config.version = DatabaseVersion::KDB4(1);
+fn write_to_disk(path: &Path, key: &DatabaseKey, db: &mut Database, version: DatabaseVersion) -> anyhow::Result<()> {
 	let tmp_path = sibling_tmp_path(path);
 	let mut options = OpenOptions::new();
 	options.write(true).create_new(true);
@@ -276,6 +291,7 @@ fn write_to_disk(path: &Path, key: &DatabaseKey, db: &mut Database) -> anyhow::R
 		options.mode(0o600);
 	}
 	let mut file = options.open(&tmp_path).with_context(|| format!("couldn't create {}", tmp_path.display()))?;
+	let previous_version = std::mem::replace(&mut db.config.version, version);
 	let result = (|| {
 		db.save(&mut file, key).map_err(|err| anyhow::anyhow!("failed to write database: {err}"))?;
 		file.sync_all().with_context(|| format!("couldn't sync {}", tmp_path.display()))?;
@@ -283,6 +299,7 @@ fn write_to_disk(path: &Path, key: &DatabaseKey, db: &mut Database) -> anyhow::R
 		Ok(())
 	})();
 	if result.is_err() {
+		db.config.version = previous_version;
 		let _ = fs::remove_file(&tmp_path);
 	}
 	result
@@ -310,7 +327,7 @@ fn write_entry(db: &mut Database, entry: &mut Entry) -> anyhow::Result<()> {
 pub fn delete_entry(path: &Path, key: &DatabaseKey, db: &mut Database, id: EntryId) -> anyhow::Result<()> {
 	db.entry_mut(id).context("entry no longer exists in the database")?.remove();
 
-	write_to_disk(path, key, db)
+	save_database(path, key, db, &mut [])
 }
 
 fn apply_fields(e: &mut EntryMut<'_>, entry: &Entry) {
@@ -375,10 +392,27 @@ mod tests {
 	}
 
 	#[test]
+	fn new_database_stores_256_mib_argon2_memory() {
+		let dir = TestDir::new();
+		let path = dir.join("memory-cost.kdbx");
+		let password = Zeroizing::new("memory-test".to_string());
+		create_database(&path, 1, &password, None, crate::config::DEFAULT_KDF_MEMORY).unwrap();
+		let (database, _, _) = unlock_database(&path, &password, None).unwrap();
+		match database.config.kdf_config {
+			keepass::config::KdfConfig::Argon2 { memory, iterations, .. } => {
+				assert_eq!(memory, 268_435_456);
+				assert_eq!(iterations, 1);
+			}
+			_ => panic!("expected Argon2"),
+		}
+	}
+
+	#[test]
 	fn password_only_databases_still_unlock() {
 		let dir = TestDir::new();
 		let database_path = dir.join("password-only.kdbx");
-		create_database(&database_path, 10, &Zeroizing::new("correct horse".to_string()), None).expect("password-only database should be created");
+		create_database(&database_path, 10, &Zeroizing::new("correct horse".to_string()), None, crate::config::DEFAULT_KDF_MEMORY)
+			.expect("password-only database should be created");
 		unlock_database(&database_path, &Zeroizing::new("correct horse".to_string()), None).expect("password-only database should unlock");
 	}
 
@@ -387,7 +421,8 @@ mod tests {
 		let dir = TestDir::new();
 		let database_path = dir.join("notes.kdbx");
 		let (mut database, key, mut entries) =
-			create_database(&database_path, 20, &Zeroizing::new("correct horse".to_string()), None).expect("database should be created");
+			create_database(&database_path, 20, &Zeroizing::new("correct horse".to_string()), None, crate::config::DEFAULT_KDF_MEMORY)
+				.expect("database should be created");
 
 		{
 			let mut root = database.root_mut();
@@ -409,7 +444,8 @@ mod tests {
 		let dir = TestDir::new();
 		let database_path = dir.join("no-notes.kdbx");
 		let (mut database, key, mut entries) =
-			create_database(&database_path, 30, &Zeroizing::new("correct horse".to_string()), None).expect("database should be created");
+			create_database(&database_path, 30, &Zeroizing::new("correct horse".to_string()), None, crate::config::DEFAULT_KDF_MEMORY)
+				.expect("database should be created");
 
 		{
 			let mut root = database.root_mut();
@@ -432,7 +468,7 @@ mod tests {
 		let keyfile_path = dir.join("database.keyx");
 		fs::write(&keyfile_path, XML_V1_KEYFILE).expect("XML v1 keyfile should be written");
 
-		create_database(&database_path, 40, &Zeroizing::new("correct horse".to_string()), Some(&keyfile_path))
+		create_database(&database_path, 40, &Zeroizing::new("correct horse".to_string()), Some(&keyfile_path), crate::config::DEFAULT_KDF_MEMORY)
 			.expect("composite-key database should be created");
 		unlock_database(&database_path, &Zeroizing::new("correct horse".to_string()), Some(&keyfile_path))
 			.expect("database should unlock with password and keyfile");
@@ -448,8 +484,9 @@ mod tests {
 		let keyfile_path = dir.join("database.keyx");
 		fs::write(&keyfile_path, [42_u8; 32]).expect("keyfile should be written");
 
-		let (mut database, _, mut entries) = create_database(&database_path, 50, &Zeroizing::new("old password".to_string()), Some(&keyfile_path))
-			.expect("composite-key database should be created");
+		let (mut database, _, mut entries) =
+			create_database(&database_path, 50, &Zeroizing::new("old password".to_string()), Some(&keyfile_path), crate::config::DEFAULT_KDF_MEMORY)
+				.expect("composite-key database should be created");
 		let new_key = build_database_key(&Zeroizing::new("new password".to_string()), Some(&keyfile_path)).expect("new composite key should be built");
 
 		save_database(&database_path, &new_key, &mut database, &mut entries).expect("database should be re-encrypted");
@@ -492,7 +529,8 @@ mod tests {
 		fs::write(&correct_keyfile, [7_u8; 32]).expect("correct keyfile should be written");
 		fs::write(&wrong_keyfile, [9_u8; 32]).expect("wrong keyfile should be written");
 
-		create_database(&database_path, 60, &Zeroizing::new("secret".to_string()), Some(&correct_keyfile)).expect("composite-key database should be created");
+		create_database(&database_path, 60, &Zeroizing::new("secret".to_string()), Some(&correct_keyfile), crate::config::DEFAULT_KDF_MEMORY)
+			.expect("composite-key database should be created");
 
 		let error = unlock_database(&database_path, &Zeroizing::new("secret".to_string()), Some(&wrong_keyfile))
 			.err()
@@ -508,7 +546,8 @@ mod tests {
 		let database_path = dir.join("kdf-iterations.kdbx");
 		let password = Zeroizing::new("correct horse".to_string());
 
-		let (_database, key, mut entries) = create_database(&database_path, 10, &password, None).expect("database should be created");
+		let (_database, key, mut entries) =
+			create_database(&database_path, 10, &password, None, crate::config::DEFAULT_KDF_MEMORY).expect("database should be created");
 
 		for expected_iterations in [200, 90] {
 			let (mut database, _, _) = unlock_database(&database_path, &password, None).expect("database should unlock");
@@ -532,7 +571,8 @@ mod tests {
 		let database_path = dir.join("kdf-reconcile.kdbx");
 		let password = Zeroizing::new("correct horse".to_string());
 
-		let (mut db, key, mut entries) = create_database(&database_path, 10, &password, None).expect("database should be created");
+		let (mut db, key, mut entries) =
+			create_database(&database_path, 10, &password, None, crate::config::DEFAULT_KDF_MEMORY).expect("database should be created");
 
 		let changed = super::reconcile_kdf_iterations(&database_path, &key, &mut db, &mut entries, 90).expect("KDF iterations should be reconciled");
 
@@ -545,6 +585,28 @@ mod tests {
 				assert_eq!(iterations, 90);
 			}
 			_ => panic!("expected Argon2 KDF"),
+		}
+	}
+
+	#[test]
+	fn ordinary_saves_and_deletion_preserve_kdbx4_version() {
+		for minor in [0, 1] {
+			let dir = TestDir::new();
+			let path = dir.join("format.kdbx");
+			let password = Zeroizing::new("format-test".to_string());
+			let (mut db, key, mut entries) = create_database(&path, 1, &password, None, crate::config::DEFAULT_KDF_MEMORY).unwrap();
+			super::save_database_as(&path, &key, &mut db, &mut entries, keepass::config::DatabaseVersion::KDB4(minor)).unwrap();
+			let mut entry = super::Entry::default();
+			entry.name = "New entry".to_string();
+			entries.push(entry);
+			save_database(&path, &key, &mut db, &mut entries).unwrap();
+			let (reopened, _, saved) = unlock_database(&path, &password, None).unwrap();
+			assert_eq!(reopened.config.version, keepass::config::DatabaseVersion::KDB4(minor));
+			assert_eq!(saved.len(), 1);
+			super::delete_entry(&path, &key, &mut db, entries[0].id.unwrap()).unwrap();
+			let (reopened, _, saved) = unlock_database(&path, &password, None).unwrap();
+			assert_eq!(reopened.config.version, keepass::config::DatabaseVersion::KDB4(minor));
+			assert!(saved.is_empty());
 		}
 	}
 }

@@ -4,7 +4,7 @@ use std::time::Duration;
 use crossterm::event::{KeyCode, KeyEvent};
 use zeroize::Zeroize;
 
-use crate::app::{App, ExportStep, ImportStep, KeyfileChangeStep, PasswordChangeStep, Screen};
+use crate::app::{App, ExportStep, ImportStep, KdfChange, KeyfileChangeStep, PasswordChangeStep, Screen};
 use crate::config::save_config;
 use crate::db::{Entry, build_database_key, save_database, unlock_database};
 use crate::input::fieldedit::{EditAction, FieldEditor};
@@ -12,23 +12,53 @@ use crate::input::{secret_pop, secret_push};
 use crate::theme::load_theme;
 use crate::util::expand_tilde;
 
-pub const UNLOCKED_ROW_COUNT: usize = 8;
-pub const LOCKED_ROW_COUNT: usize = 5;
+pub const UNLOCKED_ROW_COUNT: usize = 10;
+pub const LOCKED_ROW_COUNT: usize = 6;
 
 pub const DATABASE_ROW: usize = 0;
 pub const KEYFILE_ROW: usize = 1;
-pub const ITERATIONS_ROW: usize = 2;
-pub const AUTO_EXIT_ROW: usize = 3;
-pub const THEME_ROW: usize = 4;
+pub const FORMAT_ROW: usize = 2;
+pub const ITERATIONS_ROW: usize = 3;
+pub const MEMORY_ROW: usize = 4;
 pub const CHANGE_PASSWORD_ROW: usize = 5;
-pub const IMPORT_ROW: usize = 6;
-pub const EXPORT_ROW: usize = 7;
+pub const AUTO_EXIT_ROW: usize = 6;
+pub const THEME_ROW: usize = 7;
+pub const IMPORT_ROW: usize = 8;
+pub const EXPORT_ROW: usize = 9;
+
+pub(crate) fn settings_row(app: &App, visible_row: usize) -> usize {
+	let row = if app.login_settings && visible_row >= FORMAT_ROW { visible_row + 1 } else { visible_row };
+	if app.login_settings && row >= CHANGE_PASSWORD_ROW { row + 1 } else { row }
+}
+
+pub(crate) fn format_save_target(app: &App) -> keepass::config::DatabaseVersion {
+	match app.kdbx.as_ref().map(|db| &db.config.version) {
+		Some(keepass::config::DatabaseVersion::KDB4(1)) => keepass::config::DatabaseVersion::KDB4(0),
+		_ => keepass::config::DatabaseVersion::KDB4(1),
+	}
+}
+
+pub(crate) fn process_format_save(app: &mut App, version: keepass::config::DatabaseVersion) {
+	let message = format!("Saved as {version}");
+	let (Some(db), Some(key), Some(path)) = (app.kdbx.as_mut(), app.db_key.as_ref(), app.config.default_database.as_ref()) else {
+		app.status = Some("Not saved: database is locked".to_string());
+		return;
+	};
+	app.status = Some(match crate::db::save_database_as(path, key, db, &mut app.entries, version) {
+		Ok(()) => message,
+		Err(err) => format!("Failed to save: {err:#}"),
+	});
+}
 
 fn visible_row_count(app: &App) -> usize {
 	if app.login_settings { LOCKED_ROW_COUNT } else { UNLOCKED_ROW_COUNT }
 }
 
 pub fn handle_settings_input(app: &mut App, key: KeyEvent) {
+	if app.pending_kdf_change.is_some() {
+		return;
+	}
+
 	if app.exporting_database {
 		handle_export_input(app, key);
 		return;
@@ -95,10 +125,10 @@ pub fn handle_settings_input(app: &mut App, key: KeyEvent) {
 }
 
 fn activate_selected(app: &mut App) {
-	let selected = app.settings_state.selected().unwrap_or(0);
+	let selected = settings_row(app, app.settings_state.selected().unwrap_or(0));
 
 	// Login settings must never expose authenticated database operations.
-	if app.login_settings && selected >= CHANGE_PASSWORD_ROW {
+	if app.login_settings && matches!(selected, FORMAT_ROW | CHANGE_PASSWORD_ROW | IMPORT_ROW | EXPORT_ROW) {
 		return;
 	}
 
@@ -111,7 +141,17 @@ fn activate_selected(app: &mut App) {
 				start_change_keyfile(app);
 			}
 		}
+		FORMAT_ROW if !app.login_settings => {
+			let version = format_save_target(app);
+			app.status = Some(format!("Saving as {version}..."));
+			app.pending_save = Some(version);
+		}
 		ITERATIONS_ROW => start_editing_kdf_iterations(app),
+		MEMORY_ROW => {
+			app.field_editor = Some(FieldEditor::with_text((app.config.kdf_memory as f64 / crate::config::MIB as f64).to_string()));
+			app.editing_field = true;
+			app.status = None;
+		}
 		AUTO_EXIT_ROW => start_editing_auto_exit(app),
 		THEME_ROW => start_choosing_theme(app),
 		CHANGE_PASSWORD_ROW => start_change_password(app),
@@ -258,21 +298,48 @@ fn change_kdf_iterations(app: &mut App, new_iterations: u64) -> anyhow::Result<(
 	let path = app.config.default_database.clone().ok_or_else(|| anyhow::anyhow!("no database configured"))?;
 	let key = app.db_key.clone().ok_or_else(|| anyhow::anyhow!("no unlocked database"))?;
 	let db = app.kdbx.as_mut().ok_or_else(|| anyhow::anyhow!("no unlocked database"))?;
-	let old_iterations = if let keepass::config::KdfConfig::Argon2 { ref mut iterations, .. } = db.config.kdf_config {
-		let old = *iterations;
-		*iterations = new_iterations;
-		old
-	} else {
-		anyhow::bail!("database does not use Argon2");
-	};
+	crate::db::reconcile_kdf_iterations(&path, &key, db, &mut app.entries, new_iterations)?;
+	Ok(())
+}
 
-	if let Err(err) = save_database(&path, &key, db, &mut app.entries) {
-		if let keepass::config::KdfConfig::Argon2 { ref mut iterations, .. } = db.config.kdf_config {
-			*iterations = old_iterations;
-		}
+pub(crate) fn process_kdf_change(app: &mut App) {
+	let Some(change) = app.pending_kdf_change.take() else { return };
+	let description = match change {
+		KdfChange::Iterations(new) => format!("KDF iterations {} -> {new}", app.config.kdf_iterations),
+		KdfChange::Memory(new) => format!("KDF memory {} -> {} MiB", app.config.kdf_memory as f64 / crate::config::MIB as f64, new / crate::config::MIB),
+	};
+	let result = match change {
+		KdfChange::Iterations(value) => change_kdf_iterations(app, value),
+		KdfChange::Memory(value) => change_kdf_memory(app, value),
+	};
+	if let Err(err) = result {
+		app.status = Some(format!("Failed to save {description}: {err:#}"));
+		return;
+	}
+	match change {
+		KdfChange::Iterations(value) => app.config.kdf_iterations = value,
+		KdfChange::Memory(value) => app.config.kdf_memory = value,
+	}
+	app.status = Some(match save_config(&app.config) {
+		Ok(()) => format!("Saved {description}"),
+		Err(err) => format!("Saved {description}, but couldn't save configuration: {err:#}"),
+	});
+	app.last_activity = std::time::Instant::now();
+}
+
+fn change_kdf_memory(app: &mut App, memory: u64) -> anyhow::Result<()> {
+	let path = app.config.default_database.as_deref().ok_or_else(|| anyhow::anyhow!("no database configured"))?;
+	let key = app.db_key.as_ref().ok_or_else(|| anyhow::anyhow!("no unlocked database"))?;
+	let db = app.kdbx.as_mut().ok_or_else(|| anyhow::anyhow!("no unlocked database"))?;
+	let previous_kdf = db.config.kdf_config.clone();
+	match &mut db.config.kdf_config {
+		keepass::config::KdfConfig::Argon2 { memory: current, .. } | keepass::config::KdfConfig::Argon2id { memory: current, .. } => *current = memory,
+		_ => anyhow::bail!("database does not use Argon2"),
+	}
+	if let Err(err) = save_database(path, key, db, &mut app.entries) {
+		db.config.kdf_config = previous_kdf;
 		return Err(err);
 	}
-
 	Ok(())
 }
 
@@ -302,7 +369,7 @@ fn handle_field_input(app: &mut App, key: KeyEvent) {
 }
 
 fn commit_field(app: &mut App) {
-	let selected = app.settings_state.selected().unwrap_or(0);
+	let selected = settings_row(app, app.settings_state.selected().unwrap_or(0));
 	let value = app.field_editor.take().map(FieldEditor::into_text).unwrap_or_default();
 	app.editing_field = false;
 	match selected {
@@ -342,14 +409,33 @@ fn commit_field(app: &mut App) {
 			};
 
 			if iterations != app.config.kdf_iterations {
-				if app.kdbx.is_some()
-					&& let Err(err) = change_kdf_iterations(app, iterations)
-				{
-					app.status = Some(format!("couldn't change KDF iterations: {err:#}"));
+				if app.kdbx.is_some() {
+					app.status = Some(format!("Saving KDF iterations {} -> {iterations}...", app.config.kdf_iterations));
+					app.pending_kdf_change = Some(KdfChange::Iterations(iterations));
 					return;
 				}
 
 				app.config.kdf_iterations = iterations;
+			}
+		}
+
+		MEMORY_ROW => {
+			let memory = match parse_kdf_memory(&value) {
+				Ok(memory) => memory,
+				Err(err) => {
+					app.status = Some(err);
+					return;
+				}
+			};
+			if memory != app.config.kdf_memory {
+				if app.kdbx.is_some() {
+					let old = app.config.kdf_memory as f64 / crate::config::MIB as f64;
+					let new = memory / crate::config::MIB;
+					app.status = Some(format!("Saving KDF memory {old} -> {new} MiB..."));
+					app.pending_kdf_change = Some(KdfChange::Memory(memory));
+					return;
+				}
+				app.config.kdf_memory = memory;
 			}
 		}
 
@@ -378,6 +464,17 @@ fn parse_kdf_iterations(value: &str) -> Result<u64, String> {
 	}
 
 	Ok(iterations)
+}
+
+fn parse_kdf_memory(value: &str) -> Result<u64, String> {
+	let mib = value.trim().parse::<u64>().map_err(|_| "KDF memory must be a positive whole number of MiB".to_string())?;
+	if mib == 0 {
+		return Err("KDF memory must be at least 1 MiB".to_string());
+	}
+	if mib > u64::from(u32::MAX) / 1024 {
+		return Err("KDF memory is too large".to_string());
+	}
+	Ok(mib * crate::config::MIB)
 }
 
 fn parse_seconds(value: &str) -> Result<u64, String> {
@@ -825,12 +922,185 @@ fn apply_selected_theme(app: &mut App) {
 fn settings_rows_are_contiguous() {
 	assert_eq!(DATABASE_ROW, 0);
 	assert_eq!(KEYFILE_ROW, 1);
-	assert_eq!(ITERATIONS_ROW, 2);
-	assert_eq!(AUTO_EXIT_ROW, 3);
-	assert_eq!(THEME_ROW, 4);
+	assert_eq!(FORMAT_ROW, 2);
+	assert_eq!(ITERATIONS_ROW, 3);
+	assert_eq!(MEMORY_ROW, 4);
+	assert_eq!(AUTO_EXIT_ROW, 6);
+	assert_eq!(THEME_ROW, 7);
 	assert_eq!(CHANGE_PASSWORD_ROW, 5);
-	assert_eq!(IMPORT_ROW, 6);
-	assert_eq!(EXPORT_ROW, 7);
-	assert_eq!(UNLOCKED_ROW_COUNT, 8);
-	assert_eq!(LOCKED_ROW_COUNT, 5);
+	assert_eq!(IMPORT_ROW, 8);
+	assert_eq!(EXPORT_ROW, 9);
+	assert_eq!(UNLOCKED_ROW_COUNT, 10);
+	assert_eq!(LOCKED_ROW_COUNT, 6);
+}
+
+#[cfg(test)]
+mod format_selection_tests {
+	use super::*;
+	use keepass::config::DatabaseVersion;
+	use ratatui::{Terminal, backend::TestBackend};
+	use zeroize::Zeroizing;
+
+	#[test]
+	fn configuration_format_action_saves_and_updates_its_label() {
+		let path = std::env::temp_dir().join(format!("kptui-config-format-{}.kdbx", std::process::id()));
+		let password = Zeroizing::new("format-test".to_string());
+		let (db, key, entries) = crate::db::create_database(&path, 1, &password, None, crate::config::DEFAULT_KDF_MEMORY).unwrap();
+		let mut app = crate::app::start(false, Zeroizing::new(String::new()));
+		app.screen = Screen::Settings;
+		app.db_version = Some("KDBX4.1".to_string());
+		app.kdbx = Some(db);
+		app.db_key = Some(key);
+		app.entries = entries;
+		app.config.default_database = Some(path.clone());
+		app.settings_state.select(Some(FORMAT_ROW));
+		let mut terminal = Terminal::new(TestBackend::new(96, 26)).unwrap();
+
+		for minor in [0, 1] {
+			let frame = terminal
+				.draw(|frame| {
+					crate::app::draw(frame, &mut app);
+				})
+				.unwrap();
+			let rendered: String = frame.buffer.content.iter().map(|cell| cell.symbol()).collect();
+			assert!(rendered.contains(&format!("Save as KDBX4.{minor}")));
+			assert!(rendered.contains(&format!("Configuration KDBX4.{}", 1 - minor)));
+			handle_settings_input(&mut app, KeyEvent::from(KeyCode::Enter));
+			assert_eq!(app.pending_save, Some(DatabaseVersion::KDB4(minor)));
+			crate::input::edit::process_pending_save(&mut app);
+			assert!(app.screen == Screen::Settings);
+			assert_eq!(app.status, Some(format!("Saved as KDBX4.{minor}")));
+			let (db, _, _) = crate::db::unlock_database(&path, &password, None).unwrap();
+			assert_eq!(db.config.version, DatabaseVersion::KDB4(minor));
+			assert_eq!(format_save_target(&app), DatabaseVersion::KDB4(1 - minor));
+		}
+
+		// A failed conversion keeps the current database format.
+		app.config.default_database = Some(path.join("missing.kdbx"));
+		handle_settings_input(&mut app, KeyEvent::from(KeyCode::Enter));
+		crate::input::edit::process_pending_save(&mut app);
+		assert!(app.status.as_deref().unwrap().starts_with("Failed to save:"));
+		assert_eq!(app.kdbx.as_ref().unwrap().config.version, DatabaseVersion::KDB4(1));
+		std::fs::remove_file(path).unwrap();
+	}
+
+	#[test]
+	fn login_configuration_skips_format_selection_and_keeps_field_mapping() {
+		let mut app = crate::app::start(false, Zeroizing::new(String::new()));
+		app.screen = Screen::Settings;
+		app.login_settings = true;
+		for row in 0..LOCKED_ROW_COUNT {
+			assert_eq!(settings_row(&app, row), [DATABASE_ROW, KEYFILE_ROW, ITERATIONS_ROW, MEMORY_ROW, AUTO_EXIT_ROW, THEME_ROW][row]);
+		}
+		app.settings_state.select(Some(2));
+		handle_settings_input(&mut app, KeyEvent::from(KeyCode::Enter));
+		assert_eq!(app.field_editor.as_ref().unwrap().text(), app.config.kdf_iterations.to_string());
+		handle_settings_input(&mut app, KeyEvent::from(KeyCode::Esc));
+		let mut terminal = Terminal::new(TestBackend::new(96, 26)).unwrap();
+		let frame = terminal
+			.draw(|frame| {
+				crate::app::draw(frame, &mut app);
+			})
+			.unwrap();
+		let rendered: String = frame.buffer.content.iter().map(|cell| cell.symbol()).collect();
+		assert!(!rendered.contains("Save as KDBX"));
+		assert!(rendered.contains("KDF iterations (time cost)"));
+		assert!(!rendered.contains("Change master password"));
+		app.settings_state.select(Some(4));
+		handle_settings_input(&mut app, KeyEvent::from(KeyCode::Enter));
+		assert_eq!(app.field_editor.as_ref().unwrap().text(), app.config.auto_exit.as_secs().to_string());
+		handle_settings_input(&mut app, KeyEvent::from(KeyCode::Esc));
+	}
+}
+
+#[cfg(test)]
+mod memory_setting_tests {
+	use super::*;
+	use keepass::config::{DatabaseVersion, KdfConfig};
+	use zeroize::Zeroizing;
+
+	#[test]
+	fn iterations_commit_announces_the_change_before_saving() {
+		let mut app = crate::app::start(false, Zeroizing::new(String::new()));
+		app.screen = Screen::Settings;
+		app.kdbx = Some(keepass::Database::new());
+		app.config.kdf_iterations = 900;
+		app.settings_state.select(Some(ITERATIONS_ROW));
+		app.field_editor = Some(FieldEditor::with_text("90"));
+		app.editing_field = true;
+		handle_settings_input(&mut app, KeyEvent::from(KeyCode::Enter));
+		assert_eq!(app.pending_kdf_change, Some(KdfChange::Iterations(90)));
+		assert_eq!(app.config.kdf_iterations, 900);
+		assert_eq!(app.status.as_deref(), Some("Saving KDF iterations 900 -> 90..."));
+		let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(96, 26)).unwrap();
+		let frame = terminal
+			.draw(|frame| {
+				crate::app::draw(frame, &mut app);
+			})
+			.unwrap();
+		let rendered: String = frame.buffer.content.iter().map(|cell| cell.symbol()).collect();
+		assert!(rendered.contains("Saving KDF iterations 900 -> 90..."));
+	}
+
+	#[test]
+	fn memory_commit_announces_the_change_before_saving() {
+		let mut app = crate::app::start(false, Zeroizing::new(String::new()));
+		app.screen = Screen::Settings;
+		app.kdbx = Some(keepass::Database::new());
+		app.config.kdf_memory = crate::config::MIB;
+		app.settings_state.select(Some(MEMORY_ROW));
+		app.field_editor = Some(FieldEditor::with_text("2"));
+		app.editing_field = true;
+		handle_settings_input(&mut app, KeyEvent::from(KeyCode::Enter));
+		assert_eq!(app.pending_kdf_change, Some(KdfChange::Memory(2 * crate::config::MIB)));
+		assert_eq!(app.config.kdf_memory, crate::config::MIB);
+		assert_eq!(app.status.as_deref(), Some("Saving KDF memory 1 -> 2 MiB..."));
+		let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(96, 26)).unwrap();
+		let frame = terminal
+			.draw(|frame| {
+				crate::app::draw(frame, &mut app);
+			})
+			.unwrap();
+		let rendered: String = frame.buffer.content.iter().map(|cell| cell.symbol()).collect();
+		assert!(rendered.contains("Saving KDF memory 1 -> 2 MiB..."));
+	}
+
+	#[test]
+	fn memory_input_requires_positive_whole_mib() {
+		assert_eq!(parse_kdf_memory("256").unwrap(), 268_435_456);
+		assert_eq!(parse_kdf_memory("1").unwrap(), crate::config::MIB);
+		for text in ["0", "-1", "0.25", "1.5", "", "4194304", "18446744073709551615"] {
+			assert!(parse_kdf_memory(text).is_err(), "{text}");
+		}
+	}
+
+	#[test]
+	fn memory_change_preserves_format_and_rolls_back_on_failure() {
+		let path = std::env::temp_dir().join(format!("kptui-memory-setting-{}.kdbx", std::process::id()));
+		let password = Zeroizing::new("memory-test".to_string());
+		let (mut db, key, mut entries) = crate::db::create_database(&path, 1, &password, None, crate::config::MIB).unwrap();
+		crate::db::save_database_as(&path, &key, &mut db, &mut entries, DatabaseVersion::KDB4(0)).unwrap();
+		let mut app = crate::app::start(false, Zeroizing::new(String::new()));
+		app.kdbx = Some(db);
+		app.db_key = Some(key);
+		app.entries = entries;
+		app.config.default_database = Some(path.clone());
+		change_kdf_memory(&mut app, 2 * crate::config::MIB).unwrap();
+		let (reopened, _, _) = crate::db::unlock_database(&path, &password, None).unwrap();
+		assert_eq!(reopened.config.version, DatabaseVersion::KDB4(0));
+		match reopened.config.kdf_config {
+			KdfConfig::Argon2 { memory, iterations, .. } => {
+				assert_eq!(memory, 2 * crate::config::MIB);
+				assert_eq!(iterations, 1);
+			}
+			_ => panic!("expected Argon2"),
+		}
+		app.config.default_database = Some(path.join("missing.kdbx"));
+		assert!(change_kdf_memory(&mut app, 3 * crate::config::MIB).is_err());
+		match app.kdbx.as_ref().unwrap().config.kdf_config {
+			KdfConfig::Argon2 { memory, .. } => assert_eq!(memory, 2 * crate::config::MIB),
+			_ => panic!("expected Argon2"),
+		}
+		std::fs::remove_file(path).unwrap();
+	}
 }

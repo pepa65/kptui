@@ -3,7 +3,7 @@ use keepass::config::DatabaseVersion;
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::app::{App, Screen};
-use crate::db::{parse_totp_edit_value, save_database, totp_edit_value};
+use crate::db::{parse_totp_edit_value, save_database_as, totp_edit_value};
 use crate::input::command::preview_entry;
 use crate::input::fieldedit::{EditAction, FieldEditor};
 
@@ -28,12 +28,12 @@ pub fn handle_edit_input(app: &mut App, key: KeyEvent) {
 
 	match key.code {
 		KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-			app.pending_save = true;
-			app.status = match app.kdbx.as_ref().map(|db| db.config.version.clone()) {
-				Some(DatabaseVersion::KDB4(1)) => Some("Saving...".to_string()),
-				Some(version) => Some(format!("Saving {version} to KDBX4.1...")),
-				None => Some("Saving...".to_string()),
+			let version = match app.kdbx.as_ref().map(|db| &db.config.version) {
+				Some(DatabaseVersion::KDB4(0)) => DatabaseVersion::KDB4(0),
+				_ => DatabaseVersion::KDB4(1),
 			};
+			app.status = Some(format!("Saving as {version}..."));
+			app.pending_save = Some(version);
 		}
 		_ => {
 			app.status = None;
@@ -245,36 +245,84 @@ fn save_edit(app: &mut App) -> Option<usize> {
 }
 
 pub(crate) fn process_pending_save(app: &mut App) {
-	if !app.pending_save {
-		return;
-	}
-
-	app.pending_save = false;
-	let Some(saved_idx) = save_edit(app) else {
-		reset_edit_state(app);
+	let Some(version) = app.pending_save.take() else {
 		return;
 	};
 
-	persist_entry(app, saved_idx);
+	if app.screen == Screen::Settings {
+		crate::input::settings::process_format_save(app, version);
+		return;
+	}
+
+	let saved_idx = save_edit(app);
+	persist_entry(app, saved_idx, version);
 	reset_edit_state(app);
-	if let Some(filtered_pos) = app.filtered.iter().position(|&idx| idx == saved_idx) {
+	if let Some(saved_idx) = saved_idx
+		&& let Some(filtered_pos) = app.filtered.iter().position(|&idx| idx == saved_idx)
+	{
 		app.index_state.select(Some(filtered_pos));
 		preview_entry(app);
 	}
 }
 
-fn persist_entry(app: &mut App, idx: usize) {
+fn persist_entry(app: &mut App, idx: Option<usize>, version: DatabaseVersion) {
 	let (Some(db), Some(key), Some(path)) = (app.kdbx.as_mut(), app.db_key.as_ref(), app.config.default_database.as_ref()) else {
 		app.status = Some("Not saved: database is locked".to_string());
 		return;
 	};
 
-	let Some(target) = app.entries.get_mut(idx) else {
-		return;
+	let entries = match idx.and_then(|idx| app.entries.get_mut(idx)) {
+		Some(entry) => std::slice::from_mut(entry),
+		None => &mut [],
 	};
 
-	match save_database(path, key, db, std::slice::from_mut(target)) {
-		Ok(()) => {}
+	let saved_message = format!("Saved as {version}");
+	match save_database_as(path, key, db, entries, version) {
+		Ok(()) => app.status = Some(saved_message),
 		Err(err) => app.status = Some(format!("Failed to save: {err:#}")),
+	}
+}
+
+#[cfg(test)]
+mod save_shortcut_tests {
+	use super::*;
+
+	#[test]
+	fn saves_database_when_selected_entry_is_absent() {
+		let path = std::env::temp_dir().join(format!("kptui-save-without-entry-{}.kdbx", std::process::id()));
+		let password = Zeroizing::new("save-test".to_string());
+		let (mut db, key, _) = crate::db::create_database(&path, 1, &password, None, crate::config::DEFAULT_KDF_MEMORY).unwrap();
+		db.root_mut().add_entry().set_unprotected(keepass::db::fields::TITLE, "Existing entry");
+		let mut app = crate::app::start(false, Zeroizing::new(String::new()));
+		app.kdbx = Some(db);
+		app.db_key = Some(key);
+		app.config.default_database = Some(path.clone());
+
+		for minor in [0, 1] {
+			if minor == 1 {
+				app.edit_entry = Some(crate::db::Entry::default());
+				app.edit_target = Some(100);
+			}
+			app.pending_save = Some(DatabaseVersion::KDB4(minor));
+			process_pending_save(&mut app);
+			assert_eq!(app.status, Some(format!("Saved as KDBX4.{minor}")));
+			let (db, _, entries) = crate::db::unlock_database(&path, &password, None).unwrap();
+			assert_eq!(db.config.version, DatabaseVersion::KDB4(minor));
+			assert_eq!(entries.len(), 1);
+			assert_eq!(entries[0].name, "Existing entry");
+		}
+		std::fs::remove_file(path).unwrap();
+	}
+
+	#[test]
+	fn save_shortcut_preserves_the_current_format() {
+		let mut app = crate::app::start(false, Zeroizing::new(String::new()));
+		for minor in [0, 1] {
+			let mut db = keepass::Database::new();
+			db.config.version = DatabaseVersion::KDB4(minor);
+			app.kdbx = Some(db);
+			handle_edit_input(&mut app, KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
+			assert_eq!(app.pending_save, Some(DatabaseVersion::KDB4(minor)));
+		}
 	}
 }

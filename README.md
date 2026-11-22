@@ -8,33 +8,35 @@
 # kptui 0.37.1
 **Highly secure TUI password manager for [KeePass](https://keepass.info/) KDBX vaults (includes Linux GUI)**
 * Compatible with the PassKeeper/KeePass KDBX `.kdb` and `.kdbx` file format.
-* It saves its database file to `KDBX4.1` format, which can be used by:
-  KeePassXC, KeePassDX/KeePass2Android, KeeWeb and KeePass2.
-* Fits in with the wider KeePass ecosystem.
+* By default, it preserves the database format of `KDBX4.0` or `KDBX4.1` files, which can be used by:
+  KeePassXC, KeePassDX/KeePass2Android, KeeWeb and KeePass2, so fits in with the wider KeePass ecosystem.
+  - On the Configuration screen, the version can be switched between `KDBX4.0` and `KDBX4.1`.
+  - If a file has a different `KDBX` format, it will save it to `KDBX4.1` format.
 * Very secure in its default configuration, impossible to brute-force (so unlocking takes a few seconds!).
-  - Writes to `KDBX4.1` hardened with Argon2.
-  - KDF-Memory: `262144 KiB`
+  The password is hardened with Argon2 [hardcoded]:
+  - KDF-Memory: `256 MiB` [configurable]
   - KDF-Iterations: `90` (!) [configurable]
-  - KDF-Parallel: `4`
-* Stores: `Name` of the entry, `Username`, `Password`, `TOTP`, `URL` and `Notes` (only what it needs).
+  - KDF-Parallel: `4` [hardcoded]
+* Stores: `Name` of the entry, `Username`, `Password`, `TOTP`, `URL` and `Notes` (and the `Last modified` time).
 * The Terminal User Interface is responsive and fully keyboard-driven, and a stand-alone static binary.
-* The Graphical User Interface runs on X11 and Wayland Linux and is even more secure in wiping all secrets.
+* The Graphical User Interface version runs on X11 and Wayland Linux and is even more secure in wiping all secrets.
   This binary (`kpgui`) is dynamically linked to C and graphical system libraries.
 
 ## Features
-* **KDBX4.1 vaults**: Reads and writes standard `.kdbx` files, so you can open the same vault in
-  KeePassXC, KeePassDX/KeePass2Android, KeeWeb, KeePass2 or any other compatible client.
+* **KDBX4.1 vaults** (or `KDBX4.0`): Reads and writes standard `.kdbx` files, so you can open the same vault
+  in KeePassXC, KeePassDX/KeePass2Android, KeeWeb, KeePass2 or any other compatible client.
 * **Optional keyfile support**: Can unlocks vaults protected by a master password plus a keyfile,
-  but password-only vault is also supported.
-* **Configurable KDF iterations**: If more or less paranoid (the default 90 is a high setting).
+  but password-only vaults are also supported.
+* **Configurable KDF iterations**: If more or less paranoid (the default `90` is a high setting).
+* **Configurable KDF memory**: The default for new databases is `256 MiB` (requiring RAM usage for most CPUs).
 * **Filtered search**: Start typing on the index screen to filter entries on Name & User,
-  or on Name/User/Notes (toggled by control-C).
+  or on Name/User/Notes (toggled by `Ctrl-f`).
 * **TOTP codes**: Generates live 2FA codes from a stored seed and saves `otpauth://` URI.
   - Editable as: `SECRET [DIGITS [PERIOD]]` (`PERIOD` defaults to `30`, and `DIGITS` to `6`)
 * **Auto-exit**: The whole app can close itself automatically after a set period of inactivity
   in seconds (`0`: stays open indefinitely).
 * **Themeable**: Ships with a range of themes and supports custom themes.
-* **Access Configuration from the app**: On the Login screen or the Index screen, give Control-C:
+* **Access Configuration from the app**: On the Login screen or the Index screen, give `Ctrl-c`:
   - Configuration file: `~/.config/kptui/config.toml`
   - Database (default: `~/.local/share/kptui/default.kdbx`)
   - (Optional) keyfile
@@ -53,7 +55,7 @@ Usage:  kptui [slim | version | help]
 ```
 
 ## Installing
-### Download static single-binary
+### Download static single-binary `kptui` for amd64 Linux
 ```
 wget https://github.com/pepa65/kptui/releases/download/0.37.1/kptui
 sudo mv kptui /usr/local/bin
@@ -61,7 +63,17 @@ sudo chown root:root /usr/local/bin/kptui
 sudo chmod +x /usr/local/bin/kptui
 ```
 
-### Download
+### Download static single-binary `kptui` for Android
+```
+wget -O kptui https://github.com/pepa65/kptui/releases/download/0.37.1/kptui_android
+sudo chmod +x /usr/local/bin/kptui
+```
+
+### Download deb/rpm `kpgui` for amd64 Linux
+```
+wget https://github.com/pepa65/kptui/releases/download/0.37.1/kpgui_0.37.1-1_amd64.deb
+wget https://github.com/pepa65/kptui/releases/download/0.37.1/kpgui_0.37.1-1.x86_64.rpm
+```
 
 ### Install with cargo
 #### Static musl build from cloned repo
@@ -70,6 +82,8 @@ sudo chmod +x /usr/local/bin/kptui
 rustup target add x86_64-unknown-linux-musl
 cargo build --release
 ```
+
+For potentially much faster operation, replace `target-cpu=generic` with `target-cpu=native` in `.cargo/config.toml`!
 
 #### Dynamic build with cargo
 `cargo install --git https://github.com/pepa65/kptui`
@@ -95,19 +109,21 @@ It will be installed in `~/.cargo/bin/` which will need to be added to `PATH`!
   - Prompt to create a new database.
   - Prompt to set a master password.
   - But if a password is piped or directed in, this password will be used to create a new database with that password.
-  - If Control-C is given, then the configuration can be adjusted:
-    * Control-C from the **Login screen**: adjust the configuration file
-    * Control-C from the **Index screen** (after decrypting):
-      Also allow importing/exporting and re-encrypting the database with a different password or keyfile.
+  - If `Ctrl-c` is given, then the configuration can be adjusted:
+    * `Ctrl-c` from the **Login screen**: adjust the configuration file
+    * `Ctrl-c` from the **Index screen** (after decrypting):
+      Also allow importing/exporting and re-encrypting the database with a different password or keyfile,
+      or different KDF values for Itrerations and Memory.
 * Once unlocked, entries can be browsed, searched and opened from the Index screen.
 * To open an existing vault, set `database` in the config file at `~/.config/kptui/config.toml`.
-  - It can also be set on the Configuration screen that's accessible with Control-C from the Login screen.
-  - If a keyfile is required, that can also be set in the Config screen with Control-C in the Login screen.
+  - It can also be set on the Configuration screen that's accessible with `Ctrl-c` from the Login screen.
+  - If a keyfile is required, that can also be set in the Config screen with `Ctrl-c` in the Login screen.
 ```toml
 # Example
 database = "~/passwords.kdbx"
 keyfile = ""  # Empty means: no keyfile is set
 kdf_iterations = 90  # The default
+kdf_memory = "256M"  # 256 MiB; also accepts a byte count (unquoted!)
 ```
 * The interface requires a terminal dimensions of at least 44 colums by 24 rows (but 24x12 is still functional).
 * Run in smaller terminals with: `kptui slim` (at least 27 columns by 10 rows required, but 19x11 is still functional).
@@ -125,6 +141,7 @@ See `default_config.toml` in this repo:
 database = "~/.local/share/kptui/default.kdbx"
 keyfile = "~/.local/share/kptui/default.keyx"  # Optional (empty for password-only vaults)
 kdf_iterations = 90  # Can be lower if less paranoid about being brute-forced
+kdf_memory = "256M"  # 256 MiB, also accepts byte count (unquoted!)
 auto_exit = 300  # Seconds of inactivity before exiting the app
 theme = "melange_dark.toml"  # Theme from ~/.local/share/kptui/themes
 ```

@@ -10,7 +10,7 @@ fn start_delete_confirmation(app: &mut App, index: usize) {
 	}
 
 	app.confirm_index_delete = Some(index);
-	app.status = Some("Delete this entry? [y] Confirm  [any other key] Cancel".to_string());
+	app.status = Some("Delete this entry? [y] Confirm and save  [Esc] Cancel".to_string());
 }
 
 fn handle_delete_confirmation(app: &mut App, key: KeyCode) {
@@ -29,16 +29,18 @@ fn delete_index_entry(app: &mut App, index: usize) {
 		return;
 	};
 
-	let Some(id) = entry.id else {
-		return;
-	};
+	let id = entry.id;
 
 	let (Some(db), Some(key), Some(path)) = (app.kdbx.as_mut(), app.db_key.as_ref(), app.config.default_database.as_ref()) else {
 		app.status = Some("Not deleted: database is locked".to_string());
 		return;
 	};
 
-	if let Err(err) = crate::db::delete_entry(path, key, db, id) {
+	let result = match id {
+		Some(id) => crate::db::delete_entry(path, key, db, id),
+		None => crate::db::save_database(path, key, db, &mut []),
+	};
+	if let Err(err) = result {
 		app.status = Some(format!("Failed to delete: {err:#}"));
 		return;
 	}
@@ -72,7 +74,7 @@ pub fn handle_index_input(app: &mut App, key: KeyEvent) {
 				{
 					start_delete_confirmation(app, index);
 				}
-			} else if c.eq_ignore_ascii_case(&'s') {
+			} else if c.eq_ignore_ascii_case(&'f') {
 				app.search_notes = !app.search_notes;
 				app.refresh_filter();
 			} else {

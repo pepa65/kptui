@@ -18,7 +18,7 @@ use crate::input::SECRET_CAP;
 use crate::input::edit::{handle_edit_input, process_pending_save};
 use crate::input::fieldedit::FieldEditor;
 use crate::input::index::handle_index_input;
-use crate::input::login::{attempt_unlock, create_database_with_password, database_missing, handle_login_input};
+use crate::input::login::{attempt_unlock, create_database_with_password, database_missing, handle_login_input, request_unlock};
 use crate::input::settings::handle_settings_input;
 use crate::theme::{Theme, load_theme};
 use crate::ui::edit::{EditView, draw_edit};
@@ -64,6 +64,12 @@ pub struct TotpCache {
 	pub expires: Instant,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KdfChange {
+	Iterations(u64),
+	Memory(u64),
+}
+
 pub struct App {
 	pub screen: Screen,
 	pub login_settings: bool,
@@ -86,7 +92,9 @@ pub struct App {
 	pub editing_field: bool,
 	pub field_editor: Option<FieldEditor>,
 	pub field_editor_scroll: usize,
-	pub pending_save: bool,
+	pub pending_save: Option<keepass::config::DatabaseVersion>,
+	pub pending_unlock: bool,
+	pub pending_kdf_change: Option<KdfChange>,
 	pub confirm_delete: bool,
 	pub confirm_exit: bool,
 	pub entries: Vec<Entry>,
@@ -231,7 +239,9 @@ pub fn start(slim_mode: bool, password: Zeroizing<String>) -> App {
 		editing_field: false,
 		field_editor: None,
 		field_editor_scroll: 0,
-		pending_save: false,
+		pending_save: None,
+		pending_unlock: false,
+		pending_kdf_change: None,
 		confirm_delete: false,
 		confirm_exit: false,
 		entries: Vec::new(),
@@ -250,7 +260,7 @@ pub fn start(slim_mode: bool, password: Zeroizing<String>) -> App {
 		if database_missing(&app) {
 			create_database_with_password(&mut app);
 		} else {
-			attempt_unlock(&mut app);
+			request_unlock(&mut app);
 		}
 	}
 	app
@@ -301,11 +311,15 @@ pub fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, slim_mode: boo
 				})?;
 			}
 		}
-		if app.pending_save {
-			process_pending_save(&mut app);
+		if app.pending_unlock {
+			attempt_unlock(&mut app);
 			continue;
 		}
-		if app.pending_save {
+		if app.pending_kdf_change.is_some() {
+			crate::input::settings::process_kdf_change(&mut app);
+			continue;
+		}
+		if app.pending_save.is_some() {
 			process_pending_save(&mut app);
 			continue;
 		}

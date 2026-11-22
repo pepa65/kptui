@@ -5,13 +5,13 @@ use crate::input::fieldedit::FieldEditor;
 
 pub fn handle_shortcut(app: &mut App, c: char) {
 	match c {
-		'a' => add_entry(app),
+		'n' => new_entry(app),
 		'c' => open_settings(app),
 		_ => {}
 	}
 }
 
-fn add_entry(app: &mut App) {
+fn new_entry(app: &mut App) {
 	app.edit_entry = Some(Entry::default());
 	app.edit_original = Some(Entry::default());
 	app.edit_target = None;

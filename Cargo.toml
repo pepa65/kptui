@@ -54,13 +54,13 @@ serde_json = "1"
 csv = "1"
 anyhow = "1"
 toml = "1"
-keepass = { package = "kplib", version = "0.22" }
+keepass = { package = "kplib", version = "0.23.0" }
 unicode-width = "0.2"
 unicode-segmentation = "1"
 zeroize = { version = "1", features = ["derive"] }
 
 [profile.release]
-opt-level = "z"
+opt-level = 3
 lto = true
 codegen-units = 1
 panic = "unwind"

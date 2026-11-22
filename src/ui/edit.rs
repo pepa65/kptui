@@ -27,7 +27,7 @@ fn nav_help_items(slim_mode: bool) -> &'static [&'static str] {
 	if slim_mode {
 		&["[PgUpDn]", "[Enter]", "[^s]", "[Esc]"]
 	} else {
-		&["[PgUpDn] Scroll notes", "[Enter] Edit field", "[^s] Save", "[Esc] Close"]
+		&["[PgUpDn] Scroll notes", "[Enter] Edit", "[^s] Save", "[Esc] Close"]
 	}
 }
 

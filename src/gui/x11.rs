@@ -26,7 +26,8 @@ pub(super) fn run() -> anyhow::Result<()> {
 	ensure!(
 		screen.root_depth == 24
 			&& setup.image_byte_order == byte_order
-			&& rgb && setup.pixmap_formats.iter().any(|f| f.depth == 24 && f.bits_per_pixel == 32 && f.scanline_pad == 32),
+			&& rgb
+			&& setup.pixmap_formats.iter().any(|f| f.depth == 24 && f.bits_per_pixel == 32 && f.scanline_pad == 32),
 		"GUI requires a native-byte-order 24-bit TrueColor display with 32-bit pixels"
 	);
 
@@ -86,7 +87,7 @@ pub(super) fn run() -> anyhow::Result<()> {
 	let mut fds = [PollFd::new(conn.stream(), PollFlags::IN)];
 	let timeout = Timespec { tv_sec: 0, tv_nsec: 200_000_000 };
 	while !session.should_close() {
-		let event = if session.pending_save() { None } else { conn.poll_for_event()? };
+		let event = if session.pending_work() { None } else { conn.poll_for_event()? };
 		if event.is_none() {
 			if session.redraw {
 				let (pixels, stride, width) = session.draw()?;
@@ -108,7 +109,7 @@ pub(super) fn run() -> anyhow::Result<()> {
 				}
 				conn.flush()?;
 			}
-			if session.save_if_pending() {
+			if session.process_pending_work() {
 				continue;
 			}
 			let timed_out = match poll(&mut fds, Some(&timeout)) {

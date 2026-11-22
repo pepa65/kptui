@@ -128,8 +128,9 @@ pub(super) fn run() -> anyhow::Result<()> {
 		client.wipe_released_buffers();
 		if client.configured && !client.frame_pending && client.session.redraw {
 			client.draw(&qh)?;
+			conn.flush()?;
 		}
-		client.session.save_if_pending();
+		client.session.process_pending_work();
 		let mut timeout = next_tick.saturating_duration_since(Instant::now());
 		if client.selection.as_ref().is_some_and(|s| s.transfer.is_some()) {
 			timeout = timeout.min(Duration::from_millis(20));

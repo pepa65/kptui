@@ -186,7 +186,7 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 	} else {
 		let hint_area = Rect { x: input_area.x, y: input_area.y.saturating_add(input_area.height), width: input_area.width, height: 1 };
 
-		let hint = Paragraph::new("Enter master password  [^c] Config  [Esc] Quit")
+		let hint = Paragraph::new(if app.pending_unlock { "Unlocking..." } else { "Enter master password  [^c] Config  [Esc] Quit" })
 			.alignment(Alignment::Center)
 			.style(Style::new().fg(app.theme.warning));
 
@@ -194,7 +194,7 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 	}
 
 	// Only show the cursor when the prompt accepts text.
-	if missing && !app.creating_database {
+	if app.pending_unlock || (missing && !app.creating_database) {
 		return;
 	}
 	let typed_len = input_text.chars().count();
@@ -204,8 +204,44 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 	}
 
 	let width = inner.width as usize;
-	let cursor_offset = if typed_len < width { (width - typed_len) / 2 + typed_len } else { width - 1 };
+	let cursor_offset = if typed_len < width { width / 2 - typed_len / 2 + typed_len } else { width - 1 };
 
 	let cursor_x = inner.x.saturating_add(cursor_offset as u16);
 	frame.set_cursor_position((cursor_x, inner.y));
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use ratatui::{Terminal, backend::TestBackend};
+	use zeroize::Zeroizing;
+
+	#[test]
+	fn password_cursor_follows_the_final_dot_for_odd_and_even_lengths() {
+		let mut app = crate::app::start(true, Zeroizing::new(String::new()));
+		app.creating_database = true;
+		for width in [39, 40, 95, 96] {
+			let mut terminal = Terminal::new(TestBackend::new(width, 20)).unwrap();
+			for len in 1..12 {
+				app.password.clear();
+				app.password.push_str(&"x".repeat(len));
+				let expected = {
+					let frame = terminal.draw(|frame| draw_login(frame, &mut app)).unwrap();
+					let dots: Vec<_> = frame
+						.buffer
+						.content
+						.iter()
+						.enumerate()
+						.filter(|(_, cell)| cell.symbol() == "•")
+						.map(|(i, _)| (i as u16 % width, i as u16 / width))
+						.collect();
+					assert_eq!(dots.len(), len);
+					let (x, y) = *dots.last().unwrap();
+					(x + 1, y)
+				};
+				let cursor = terminal.get_cursor_position().unwrap();
+				assert_eq!((cursor.x, cursor.y), expected, "field width {width}, password length {len}");
+			}
+		}
+	}
 }

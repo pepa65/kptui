@@ -11,6 +11,8 @@ const SAMPLE_CONFIG: &str = include_str!("../default_config.toml");
 const AUTO_EXIT: u64 = 300;
 const CONFIGFILE: &str = "~/.config/kptui/config.toml";
 const KDF_ITERATIONS: u64 = 90;
+pub const MIB: u64 = 1024 * 1024;
+pub const DEFAULT_KDF_MEMORY: u64 = 256 * MIB;
 
 fn sibling_tmp_path(path: &Path) -> PathBuf {
 	let mut tmp = path.as_os_str().to_os_string();
@@ -22,6 +24,7 @@ pub struct Config {
 	pub default_database: Option<PathBuf>,
 	pub keyfile: Option<PathBuf>,
 	pub kdf_iterations: u64,
+	pub kdf_memory: u64,
 	pub auto_exit: Duration,
 	pub theme: Option<String>,
 }
@@ -32,6 +35,7 @@ impl Default for Config {
 			default_database: None,
 			keyfile: None,
 			kdf_iterations: KDF_ITERATIONS,
+			kdf_memory: DEFAULT_KDF_MEMORY,
 			auto_exit: Duration::from_secs(AUTO_EXIT),
 			theme: None,
 		}
@@ -44,8 +48,35 @@ struct ConfigFile {
 	default_database: Option<String>,
 	keyfile: Option<String>,
 	kdf_iterations: Option<u64>,
+	kdf_memory: Option<KdfMemoryValue>,
 	auto_exit: Option<u64>,
 	theme: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(untagged)]
+enum KdfMemoryValue {
+	Bytes(u64),
+	WithUnit(String),
+}
+
+impl KdfMemoryValue {
+	fn into_bytes(self) -> anyhow::Result<u64> {
+		match self {
+			Self::Bytes(bytes) => Ok(bytes),
+			Self::WithUnit(text) => {
+				let value = text.trim().to_ascii_lowercase();
+				let number = value
+					.strip_suffix("mib")
+					.or_else(|| value.strip_suffix("mb"))
+					.or_else(|| value.strip_suffix('m'))
+					.context(r#"kdf_memory requires a byte count or a quoted whole-MiB value such as "256M""#)?;
+				let mib = number.trim().parse::<u64>().context("kdf_memory must contain a whole number of MiB")?;
+				anyhow::ensure!(mib > 0, "kdf_memory must be at least 1 MiB");
+				mib.checked_mul(MIB).context("kdf_memory is too large")
+			}
+		}
+	}
 }
 
 pub fn load_config() -> anyhow::Result<Config> {
@@ -82,6 +113,7 @@ fn parse_config(text: &str) -> anyhow::Result<Config> {
 		default_database: raw.database.or(raw.default_database).map(|s| expand_tilde(&s)),
 		keyfile: raw.keyfile.filter(|s| !s.is_empty()).map(|s| expand_tilde(&s)),
 		kdf_iterations: raw.kdf_iterations.unwrap_or(defaults.kdf_iterations),
+		kdf_memory: raw.kdf_memory.map(KdfMemoryValue::into_bytes).transpose()?.unwrap_or(defaults.kdf_memory),
 		auto_exit: raw.auto_exit.map(Duration::from_secs).unwrap_or(defaults.auto_exit),
 		theme: raw.theme,
 	})
@@ -92,6 +124,7 @@ struct ConfigFileOut<'a> {
 	database: Option<String>,
 	keyfile: String,
 	kdf_iterations: u64,
+	kdf_memory: KdfMemoryValue,
 	auto_exit: u64,
 	theme: Option<&'a str>,
 }
@@ -135,6 +168,11 @@ fn serialize_config(config: &Config) -> anyhow::Result<String> {
 		database: config.default_database.as_ref().map(|p| p.display().to_string()),
 		keyfile: config.keyfile.as_ref().map(|p| p.display().to_string()).unwrap_or_default(),
 		kdf_iterations: config.kdf_iterations,
+		kdf_memory: if config.kdf_memory > 0 && config.kdf_memory % MIB == 0 {
+			KdfMemoryValue::WithUnit(format!("{}M", config.kdf_memory / MIB))
+		} else {
+			KdfMemoryValue::Bytes(config.kdf_memory)
+		},
 		auto_exit: config.auto_exit.as_secs(),
 		theme: config.theme.as_deref(),
 	};
@@ -211,5 +249,37 @@ mod tests {
 		.expect("config should parse");
 
 		assert_eq!(config.default_database, Some(PathBuf::from("/tmp/new.kdbx")));
+	}
+	#[test]
+	fn memory_defaults_and_legacy_values_round_trip() {
+		assert_eq!(parse_config("").unwrap().kdf_memory, 256 * super::MIB);
+		for bytes in [262_144, 268_435_456] {
+			let text = format!("kdf_memory = {bytes}");
+			let config = parse_config(&text).unwrap();
+			assert_eq!(config.kdf_memory, bytes);
+			let saved = serialize_config(&config).unwrap();
+			assert_eq!(parse_config(&saved).unwrap().kdf_memory, bytes);
+		}
+	}
+	#[test]
+	fn memory_accepts_mib_suffixes_and_saves_the_short_form() {
+		for text in ["256m", "256M", "256MB", "256MiB", "256mb", "256mib"] {
+			let config = parse_config(&format!("kdf_memory = {text:?}")).unwrap();
+			assert_eq!(config.kdf_memory, 256 * super::MIB);
+			let saved = serialize_config(&config).unwrap();
+			assert!(saved.contains(r#"kdf_memory = "256M""#));
+			assert_eq!(parse_config(&saved).unwrap().kdf_memory, config.kdf_memory);
+		}
+		let config = parse_config("kdf_memory = 268435456").unwrap();
+		assert!(serialize_config(&config).unwrap().contains(r#"kdf_memory = "256M""#));
+		let legacy = parse_config("kdf_memory = 262144").unwrap();
+		assert!(serialize_config(&legacy).unwrap().contains("kdf_memory = 262144"));
+	}
+
+	#[test]
+	fn memory_rejects_invalid_units_fractions_and_overflow() {
+		for text in ["0M", "-1M", "1.5M", "256GB", "256", "18446744073709551615M", ""] {
+			assert!(parse_config(&format!("kdf_memory = {text:?}")).is_err(), "{text}");
+		}
 	}
 }

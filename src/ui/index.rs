@@ -20,9 +20,9 @@ pub(crate) fn header_height(slim_mode: bool) -> u16 {
 
 fn help_items(slim_mode: bool) -> &'static [&'static str] {
 	if slim_mode {
-		&["[^s]", "[Enter]", "[Esc]", "[^a]", "[^d]", "[^c]"]
+		&["[^f]", "[Enter]", "[Esc]", "[^n]", "[^d]", "[^c]"]
 	} else {
-		&["[^s] Search", "[Enter] View", "[Esc] Quit", "[^a] Add", "[^d] Delete", "[^c] Config"]
+		&["[^f] Filter", "[Enter] View", "[Esc] Quit", "[^n] New", "[^d] Delete", "[^c] Config"]
 	}
 }
 

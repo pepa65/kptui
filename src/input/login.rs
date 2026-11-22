@@ -5,7 +5,7 @@ use zeroize::Zeroize;
 
 use crate::app::{App, Screen};
 use crate::config::save_config;
-use crate::db::{create_database, reconcile_kdf_iterations, unlock_database};
+use crate::db::{create_database, unlock_database};
 use crate::input::command::open_settings;
 use crate::input::{secret_pop, secret_push};
 use crate::util::default_new_database_path;
@@ -40,7 +40,7 @@ pub fn handle_login_input(app: &mut App, key: KeyEvent) {
 		}
 
 		KeyCode::Enter => {
-			attempt_unlock(app);
+			request_unlock(app);
 		}
 
 		KeyCode::Esc => {
@@ -142,7 +142,7 @@ fn finish_create_database(app: &mut App) {
 pub fn create_database_with_password(app: &mut App) {
 	let path = app.config.default_database.clone().unwrap_or_else(default_new_database_path);
 
-	match create_database(&path, app.config.kdf_iterations, &app.password, app.config.keyfile.as_deref()) {
+	match create_database(&path, app.config.kdf_iterations, &app.password, app.config.keyfile.as_deref(), app.config.kdf_memory) {
 		Ok((db, key, entries)) => {
 			app.config.default_database = Some(path.clone());
 			app.db_version = crate::db::kdbx_version(&path);
@@ -174,15 +174,38 @@ pub fn create_database_with_password(app: &mut App) {
 	}
 }
 
+pub fn request_unlock(app: &mut App) {
+	app.login_error = None;
+	app.pending_unlock = true;
+}
+
 pub fn attempt_unlock(app: &mut App) {
+	app.pending_unlock = false;
 	let Some(path) = app.config.default_database.as_deref() else {
 		app.login_error = Some("No default_database set in configfile".to_string());
 		return;
 	};
 
 	match unlock_database(path, &app.password, app.config.keyfile.as_deref()) {
-		Ok((mut db, key, mut entries)) => {
-			let reconcile_error = reconcile_kdf_iterations(path, &key, &mut db, &mut entries, app.config.kdf_iterations).err();
+		Ok((db, key, entries)) => {
+			let kdf = match &db.config.kdf_config {
+				keepass::config::KdfConfig::Argon2 { iterations, memory, .. } | keepass::config::KdfConfig::Argon2id { iterations, memory, .. } => {
+					Some((*iterations, *memory))
+				}
+				_ => None,
+			};
+			let config_status =
+				kdf.filter(|&(iterations, memory)| iterations != app.config.kdf_iterations || memory != app.config.kdf_memory)
+					.map(|(iterations, memory)| {
+						app.config.kdf_iterations = iterations;
+						app.config.kdf_memory = memory;
+						match save_config(&app.config) {
+							Ok(()) => {
+								format!("Configuration updated to database KDF: {iterations} iterations, {} MiB", memory as f64 / crate::config::MIB as f64)
+							}
+							Err(err) => format!("Database unlocked, but couldn't save KDF configuration: {err:#}"),
+						}
+					});
 
 			app.entries = entries;
 			app.kdbx = Some(db);
@@ -193,13 +216,57 @@ pub fn attempt_unlock(app: &mut App) {
 			app.refresh_filter();
 			app.screen = Screen::Index;
 
-			if let Some(err) = reconcile_error {
-				app.status = Some(format!("WARNING: Database unlocked, but couldn't save configured KDF iterations: {err:#}"));
-			}
+			app.status = config_status;
 		}
 		Err(err) => {
 			app.password.zeroize();
 			app.login_error = Some(format!("{err}"));
 		}
+	}
+}
+
+#[cfg(test)]
+mod unlock_status_tests {
+	use super::*;
+	use ratatui::{Terminal, backend::TestBackend};
+	use zeroize::Zeroizing;
+
+	#[test]
+	fn enter_draws_unlocking_before_decryption_and_clears_it_afterward() {
+		let path = std::env::temp_dir().join(format!("kptui-unlock-status-{}.kdbx", std::process::id()));
+		let password = Zeroizing::new("unlock-test".to_string());
+		crate::db::create_database(&path, 1, &password, None, crate::config::DEFAULT_KDF_MEMORY).unwrap();
+		let mut app = crate::app::start(false, Zeroizing::new(String::new()));
+		app.config.default_database = Some(path.clone());
+		app.config.keyfile = None;
+		app.config.kdf_iterations = 1;
+		let mut terminal = Terminal::new(TestBackend::new(96, 26)).unwrap();
+
+		for supplied in ["wrong-password", "unlock-test"] {
+			app.password.push_str(supplied);
+			handle_login_input(&mut app, KeyEvent::from(KeyCode::Enter));
+			assert!(app.pending_unlock);
+			assert!(app.screen == Screen::Login);
+			assert!(app.kdbx.is_none());
+			assert!(app.login_error.is_none());
+			let frame = terminal
+				.draw(|frame| {
+					crate::app::draw(frame, &mut app);
+				})
+				.unwrap();
+			let rendered: String = frame.buffer.content.iter().map(|cell| cell.symbol()).collect();
+			assert!(rendered.contains("Unlocking..."));
+			attempt_unlock(&mut app);
+			assert!(!app.pending_unlock);
+			assert!(app.password.is_empty());
+			if supplied == "wrong-password" {
+				assert!(app.screen == Screen::Login);
+				assert!(app.login_error.is_some());
+			} else {
+				assert!(app.screen == Screen::Index);
+				assert!(app.kdbx.is_some());
+			}
+		}
+		std::fs::remove_file(path).unwrap();
 	}
 }
