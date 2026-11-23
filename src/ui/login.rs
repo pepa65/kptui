@@ -213,6 +213,7 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::ui::DOT;
 	use ratatui::{Terminal, backend::TestBackend};
 	use zeroize::Zeroizing;
 
@@ -232,7 +233,7 @@ mod tests {
 						.content
 						.iter()
 						.enumerate()
-						.filter(|(_, cell)| cell.symbol() == super::DOT)
+						.filter(|(_, cell)| cell.symbol() == DOT)
 						.map(|(i, _)| (i as u16 % width, i as u16 / width))
 						.collect();
 					assert_eq!(dots.len(), len);

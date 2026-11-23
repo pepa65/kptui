@@ -437,13 +437,14 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) -> Option<EditView> {
 #[cfg(test)]
 mod mask_tests {
 	use super::{masked, nav_help_items, reveal_item};
+	use crate::ui::DOT;
 	use unicode_width::UnicodeWidthStr;
 
 	#[test]
 	fn masks_keep_the_width_of_the_password() {
 		assert_eq!(masked(""), "");
-		assert_eq!(masked("pässwörd"), super::DOT.repeat(8));
-		assert_eq!(masked("猫z"), "•••");
+		assert_eq!(masked("pässwörd"), DOT.repeat(8));
+		assert_eq!(masked("猫z"), DOT.repeat(3));
 		for text in ["correct horse", "猫z", "e\u{301}x"] {
 			assert_eq!(masked(text).width(), text.width(), "{text}");
 		}

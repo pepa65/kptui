@@ -12,7 +12,7 @@ pub mod index;
 pub mod login;
 pub mod settings;
 
-pub(super) const DOT: &str = "•";
+pub const DOT: &str = "•";
 
 fn mask_password(text: &str) -> String {
 	DOT.repeat(text.chars().count())
