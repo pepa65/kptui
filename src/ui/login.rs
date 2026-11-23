@@ -232,7 +232,7 @@ mod tests {
 						.content
 						.iter()
 						.enumerate()
-						.filter(|(_, cell)| cell.symbol() == "•")
+						.filter(|(_, cell)| cell.symbol() == super::DOT)
 						.map(|(i, _)| (i as u16 % width, i as u16 / width))
 						.collect();
 					assert_eq!(dots.len(), len);

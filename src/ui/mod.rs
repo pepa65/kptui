@@ -12,8 +12,10 @@ pub mod index;
 pub mod login;
 pub mod settings;
 
+pub(super) const DOT: &str = "•";
+
 fn mask_password(text: &str) -> String {
-	"•".repeat(text.chars().count())
+	super::DOT.repeat(text.chars().count())
 }
 
 fn section<'a>(title: &'a str, theme: &Theme, inset: u16) -> Block<'a> {
