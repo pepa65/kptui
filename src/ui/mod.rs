@@ -12,8 +12,11 @@ pub mod index;
 pub mod login;
 pub mod settings;
 
+/// What hides every character of a password.
+const DOT: &str = "•";
+
 fn mask_password(text: &str) -> String {
-	"•".repeat(text.chars().count())
+	DOT.repeat(text.chars().count())
 }
 
 fn section<'a>(title: &'a str, theme: &Theme, inset: u16) -> Block<'a> {

@@ -97,6 +97,8 @@ pub struct App {
 	pub pending_kdf_change: Option<KdfChange>,
 	pub confirm_delete: bool,
 	pub confirm_exit: bool,
+	/// Whether the password of the open entry is shown (Control-R), instead of dots.
+	pub show_password: bool,
 	pub entries: Vec<Entry>,
 	pub filtered: Vec<usize>,
 	pub kdbx: Option<Database>,
@@ -244,6 +246,7 @@ pub fn start(slim_mode: bool, password: Zeroizing<String>) -> App {
 		pending_kdf_change: None,
 		confirm_delete: false,
 		confirm_exit: false,
+		show_password: false,
 		entries: Vec::new(),
 		filtered: Vec::new(),
 		kdbx: None,

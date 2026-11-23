@@ -31,6 +31,8 @@
 * **Configurable KDF memory**: The default for new databases is `256 MiB` (requiring RAM usage for most CPUs).
 * **Filtered search**: Start typing on the index screen to filter entries on Name & User,
   or on Name/User/Notes (toggled by `Ctrl-f`).
+* **Hidden passwords**: In an entry, the password shows as dots until `Ctrl-r` shows it, and `Ctrl-r` hides it again.
+  This works while editing the password too, and it's hidden again whenever an entry gets opened or closed.
 * **TOTP codes**: Generates live 2FA codes from a stored seed and saves `otpauth://` URI.
   - Editable as: `SECRET [DIGITS [PERIOD]]` (`PERIOD` defaults to `30`, and `DIGITS` to `6`)
 * **Auto-exit**: The whole app can close itself automatically after a set period of inactivity
@@ -161,6 +163,8 @@ All fields are optional, as the above are the default values.
   All edits and changes will be lost (0: never auto-exit).
 * When the app is open and the vault not locked, secrets are kept in memory!
 * When the app exits, there are no plaintext secrets left anywhere in memory.
+* Passwords are hidden on screen unless shown with `Ctrl-r`, and hidden again for every entry that gets opened.
+  In the GUI, a hidden password can be selected with the mouse too, so it can be copied without showing it.
 * Using encrypted swap or zram (or no swap) increases security.
 * Booting with kernel cmdline option `init_on_free=1` causes every freed page to get zeroed.
 * On Linux, some extra hardening takes place in the operation of kptui.
