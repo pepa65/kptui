@@ -175,6 +175,7 @@ fn main() -> std::process::ExitCode {
 			ExitCode::SUCCESS
 		}
 
+		Command::Readme if BIN_NAME == "kpgui" => run_gui(true),
 		Command::Readme => match readme::run() {
 			Ok(()) => ExitCode::SUCCESS,
 			Err(err) => {
@@ -188,7 +189,7 @@ fn main() -> std::process::ExitCode {
 			ExitCode::SUCCESS
 		}
 
-		Command::Gui => run_gui(),
+		Command::Gui => run_gui(false),
 		Command::Tui(slim) => {
 			let password = match read_stdin() {
 				Ok(password) => password,
@@ -211,9 +212,9 @@ fn main() -> std::process::ExitCode {
 	}
 }
 
-fn run_gui() -> ExitCode {
+fn run_gui(_readme: bool) -> ExitCode {
 	#[cfg(all(feature = "gui", target_os = "linux", target_env = "gnu"))]
-	let result = gui::run();
+	let result = gui::run(_readme);
 	#[cfg(not(all(feature = "gui", target_os = "linux", target_env = "gnu")))]
 	let result: anyhow::Result<()> = Err(anyhow::anyhow!("GUI requires a GNU/Linux target and a build with --features gui"));
 	match result {

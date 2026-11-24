@@ -130,7 +130,8 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 	});
 
 	let version = app.kdbx.as_ref().map(|db| db.config.version.to_string()).or_else(|| app.db_version.clone());
-	let title = version.map_or_else(|| "Configuration ".to_string(), |version| format!("Configuration {version} "));
+	let name = crate::config::config_name();
+	let title = version.map_or_else(|| format!("Configuration '{name}' "), |version| format!("Configuration '{name}' {version} "));
 	let section = super::section(&title, theme, 0);
 	let list_area = section.inner(vertical[0]);
 	let list = List::new(items).block(section);

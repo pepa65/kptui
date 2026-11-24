@@ -64,7 +64,7 @@ const TICK: Duration = Duration::from_millis(200);
 const LEFT_BUTTON: u32 = 0x110;
 const RIGHT_BUTTON: u32 = 0x111;
 
-pub(super) fn run() -> anyhow::Result<()> {
+pub(super) fn run(readme: bool) -> anyhow::Result<()> {
 	let conn = Connection::connect_to_env().context("could not connect to the Wayland compositor")?;
 	let (globals, queue) = registry_queue_init(&conn)?;
 	let qh = queue.handle();
@@ -86,7 +86,7 @@ pub(super) fn run() -> anyhow::Result<()> {
 	if primary_manager.is_none() {
 		eprintln!("{}: this Wayland compositor does not offer primary selection", crate::BIN_NAME);
 	}
-	let session = Session::new()?;
+	let session = Session::new(readme)?;
 	let pool = SlotPool::new(usize::from(session.size.width) * usize::from(session.size.height) * 4, &shm)?;
 	let mut client = Client {
 		session,

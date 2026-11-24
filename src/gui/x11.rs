@@ -13,7 +13,7 @@ use super::{
 	viewport::{MAX_SIZE, MIN_SIZE},
 };
 
-pub(super) fn run() -> anyhow::Result<()> {
+pub(super) fn run(readme: bool) -> anyhow::Result<()> {
 	let (conn, screen_index) = x11rb::connect(None).context("could not connect to the X11 display")?;
 	let setup = conn.setup();
 	let screen = &setup.roots[screen_index];
@@ -31,7 +31,7 @@ pub(super) fn run() -> anyhow::Result<()> {
 		"GUI requires a native-byte-order 24-bit TrueColor display with 32-bit pixels"
 	);
 
-	let mut session = Session::new()?;
+	let mut session = Session::new(readme)?;
 	let initial_size = session.size;
 	let max_image_bytes = conn.maximum_request_bytes().min(256 * 1024).saturating_sub(32);
 	let window = conn.generate_id()?;

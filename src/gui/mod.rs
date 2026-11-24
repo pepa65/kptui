@@ -36,17 +36,17 @@ const DOUBLE_CLICK_MS: u32 = 400;
 
 const GRID_AREA: Rect = Rect::new(0, 0, GRID.width, GRID.height);
 
-pub fn run() -> anyhow::Result<()> {
+pub fn run(readme: bool) -> anyhow::Result<()> {
 	match std::env::var("KPGUI_BACKEND").as_deref() {
-		Ok("x11") => x11::run(),
-		Ok("wayland") => wayland::run(),
+		Ok("x11") => x11::run(readme),
+		Ok("wayland") => wayland::run(readme),
 		Ok(other) => anyhow::bail!("unknown KPGUI_BACKEND {other:?}; use x11 or wayland"),
 		Err(std::env::VarError::NotPresent)
 			if ["WAYLAND_DISPLAY", "WAYLAND_SOCKET"].iter().any(|name| std::env::var_os(name).is_some_and(|value| !value.is_empty())) =>
 		{
-			wayland::run()
+			wayland::run(readme)
 		}
-		Err(std::env::VarError::NotPresent) => x11::run(),
+		Err(std::env::VarError::NotPresent) => x11::run(readme),
 		Err(err) => anyhow::bail!("{err}"),
 	}
 }
@@ -66,6 +66,7 @@ enum SelectionChange {
 }
 
 struct Session {
+	readme: Option<crate::readme::Pager>,
 	app: app::App,
 	terminal: Terminal<FrameBackend>,
 	canvas: Canvas,
@@ -82,11 +83,12 @@ struct Session {
 }
 
 impl Session {
-	fn new() -> anyhow::Result<Self> {
+	fn new(readme: bool) -> anyhow::Result<Self> {
 		let size_path = crate::util::expand_tilde("~/.config/kptui/gui-size");
 		let size = load_size(&size_path);
 		let viewport = Viewport::new(size);
 		Ok(Self {
+			readme: readme.then(|| crate::readme::Pager::new(GRID.width)),
 			app: app::start(false, Zeroizing::new(String::with_capacity(SECRET_CAP))),
 			terminal: Terminal::new(FrameBackend::default())?,
 			canvas: Canvas::new(&viewport).map_err(anyhow::Error::msg)?,
@@ -104,7 +106,9 @@ impl Session {
 	}
 
 	fn should_close(&mut self) -> bool {
-		app::maybe_auto_exit(&mut self.app);
+		if self.readme.is_none() {
+			app::maybe_auto_exit(&mut self.app);
+		}
 		self.app.should_quit
 	}
 
@@ -171,7 +175,13 @@ impl Session {
 			self.canvas = Canvas::new(&self.viewport).map_err(anyhow::Error::msg)?;
 		}
 		self.canvas.clear(rgb_color(self.app.theme.background, 0x101923));
-		let frame = self.terminal.draw(|frame| self.edit_view = app::draw(frame, &mut self.app))?;
+		let frame = self.terminal.draw(|frame| {
+			if let Some(pager) = &mut self.readme {
+				pager.draw(frame);
+			} else {
+				self.edit_view = app::draw(frame, &mut self.app);
+			}
+		})?;
 		paint_frame(&self.canvas, frame.buffer, self.app.theme.background, self.app.theme.text);
 		let readonly_highlight = self.readonly_selection.as_ref().and_then(|selection| {
 			let range = selection.range()?;
@@ -206,6 +216,19 @@ impl Session {
 	}
 
 	fn input(&mut self, input: Input) -> SelectionChange {
+		if let Some(pager) = &mut self.readme {
+			let key = match input {
+				Input::Key(key) => Some(key),
+				Input::Press { button: 4, .. } => Some(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE)),
+				Input::Press { button: 5, .. } => Some(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)),
+				_ => None,
+			};
+			if let Some(key) = key {
+				self.app.should_quit |= pager.key(key);
+				self.redraw = true;
+			}
+			return SelectionChange::Keep;
+		}
 		match input {
 			Input::FocusLost => {
 				self.last_click = None;
@@ -419,8 +442,14 @@ fn paint_frame(canvas: &Canvas, buffer: &Buffer, background: Color, text: Color)
 		let mut x = 0;
 		while x < row.len() {
 			let style = (row[x].fg, row[x].bg);
+			// A terminal full block fills its cell; font glyph metrics do not.
+			if row[x].symbol() == "█" {
+				canvas.rect(x as i32 * i32::from(CELL_WIDTH), y, CELL_WIDTH.into(), CELL_HEIGHT.into(), rgb_color(style.0, text));
+				x += 1;
+				continue;
+			}
 			let mut end = x;
-			while let Some(cell) = row.get(end).filter(|cell| (cell.fg, cell.bg) == style) {
+			while let Some(cell) = row.get(end).filter(|cell| (cell.fg, cell.bg) == style && cell.symbol() != "█") {
 				run.push_str(cell.symbol());
 				// Ratatui resets continuation cells, including their style.
 				// Keep them in the same run as the glyph that occupies them.
@@ -496,6 +525,49 @@ impl Backend for FrameBackend {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn full_blocks_tile_without_font_gaps_at_different_window_sizes() -> anyhow::Result<()> {
+		use ratatui::{
+			style::Style,
+			widgets::{Paragraph, Widget},
+		};
+		let mut buffer = Buffer::empty(GRID_AREA);
+		Paragraph::new("   ████████████\n█ ███ █")
+			.style(Style::new().fg(Color::Rgb(255, 255, 255)))
+			.render(GRID_AREA, &mut buffer);
+		for size in [Size::new(720, 468), Size::new(960, 624), Size::new(1100, 720), Size::new(1440, 936)] {
+			let viewport = Viewport::new(size);
+			let mut actual = Canvas::new(&viewport).map_err(anyhow::Error::msg)?;
+			let mut expected = Canvas::new(&viewport).map_err(anyhow::Error::msg)?;
+			actual.clear(0);
+			expected.clear(0);
+			paint_frame(&actual, &buffer, Color::Rgb(0, 0, 0), Color::Rgb(255, 255, 255));
+			for (x, y, width) in [(30, 0, 120), (0, 24, 10), (20, 24, 30), (60, 24, 10)] {
+				expected.rect(x, y, width, CELL_HEIGHT.into(), 0xffffff);
+			}
+			assert!(
+				actual.pixels().map_err(anyhow::Error::msg)?.0 == expected.pixels().map_err(anyhow::Error::msg)?.0,
+				"block gaps at {size:?}"
+			);
+		}
+		Ok(())
+	}
+
+	#[test]
+	fn readme_renders_scrolls_and_closes_without_unlocking() {
+		let mut session = Session::new(true).unwrap();
+		let first = session.draw().unwrap().0.to_vec();
+		session.input(Input::Key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE)));
+		let last = session.draw().unwrap().0.to_vec();
+		assert_ne!(first, last);
+		session.input(Input::Press { button: 4, x: 0, y: 0, time: 0 });
+		assert_ne!(last, session.draw().unwrap().0);
+		assert!(session.app.kdbx.is_none());
+		assert!(!session.pending_work());
+		session.input(Input::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)));
+		assert!(session.should_close());
+	}
 
 	#[test]
 	fn readonly_drag_does_not_count_as_a_click_even_if_it_returns_to_its_start() {

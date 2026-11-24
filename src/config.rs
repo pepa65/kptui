@@ -23,6 +23,10 @@ pub fn select_config(name: &str) -> anyhow::Result<()> {
 	CONFIG_PATH.set(path).map_err(|_| anyhow::anyhow!("configuration file already selected"))
 }
 
+pub fn config_name() -> String {
+	config_path().file_stem().expect("config filename has a stem").to_string_lossy().into_owned()
+}
+
 fn config_path() -> PathBuf {
 	CONFIG_PATH.get().cloned().unwrap_or_else(|| expand_tilde(CONFIGFILE))
 }

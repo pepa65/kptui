@@ -52,7 +52,8 @@
   - Export to file (only from Index screen)
 * **Import from other vaults or export**: Import entries from another `.kdbx` file, or from a `.csv`/`.json` file
   (as produced by other password managers). Export to CSV/JSON or KDBX.
-* **Documentation included**: The binary includes this full Readme, do: `kptui readme`.
+* **Documentation included**: The binaries include this full Readme, do: `kptui readme` or `kpgui -r`.
+  Scrolling with arrows, page keys, Home/End works, and q/Esc/Ctrl-C closes.
 
 ## Usage
 ```
@@ -60,6 +61,9 @@ kptui 0.42.1 - Highly secure TUI password manager for KeePass KDBX files (+GUI)
 Usage: kptui [tui | slim | gui | readme | help | version] [NAME[.toml]]
   NAME[.toml] (default: config) selects configfile ~/.config/kptui/NAME.toml
 ```
+
+`kpgui -r` opens the README in the GUI; `kptui -r` uses the terminal viewer.
+
 
 ## Installing
 ### Download static single-binary `kptui` for amd64 Linux

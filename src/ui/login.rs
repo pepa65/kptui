@@ -73,7 +73,7 @@ pub fn draw_login(frame: &mut Frame, app: &mut App) {
 
 		let logo = Paragraph::new(vec![
 			Line::from(vec![Span::styled("         ███", claws_light_style), Span::styled("                  ███         ", claws_style)]),
-			Line::from(vec![Span::styled("        ██", claws_light_style), Span::styled("█        kptui       ███        ", claws_style)]),
+			Line::from(vec![Span::styled("        ██", claws_light_style), Span::styled(format!("█        {}       ███        ", crate::BIN_NAME), claws_style)]),
 			Line::from(vec![Span::styled("       ██", claws_light_style), Span::styled("█   █              █   ███       ", claws_style)]),
 			Line::from(vec![
 				Span::styled("      ██", claws_light_style),

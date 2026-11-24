@@ -963,7 +963,7 @@ mod format_selection_tests {
 				.unwrap();
 			let rendered: String = frame.buffer.content.iter().map(|cell| cell.symbol()).collect();
 			assert!(rendered.contains(&format!("Save as KDBX4.{minor}")));
-			assert!(rendered.contains(&format!("Configuration KDBX4.{}", 1 - minor)));
+			assert!(rendered.contains(&format!("Configuration 'config' KDBX4.{}", 1 - minor)));
 			handle_settings_input(&mut app, KeyEvent::from(KeyCode::Enter));
 			assert_eq!(app.pending_save, Some(DatabaseVersion::KDB4(minor)));
 			crate::input::edit::process_pending_save(&mut app);
