@@ -168,7 +168,7 @@ fn serialize_config(config: &Config) -> anyhow::Result<String> {
 		database: config.default_database.as_ref().map(|p| p.display().to_string()),
 		keyfile: config.keyfile.as_ref().map(|p| p.display().to_string()).unwrap_or_default(),
 		kdf_iterations: config.kdf_iterations,
-		kdf_memory: if config.kdf_memory > 0 && config.kdf_memory % MIB == 0 {
+		kdf_memory: if config.kdf_memory > 0 && config.kdf_memory.is_multiple_of(MIB) {
 			KdfMemoryValue::WithUnit(format!("{}M", config.kdf_memory / MIB))
 		} else {
 			KdfMemoryValue::Bytes(config.kdf_memory)

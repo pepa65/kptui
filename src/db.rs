@@ -210,7 +210,7 @@ pub fn create_database(
 	path: &Path, kdf_iterations: u64, password: &Zeroizing<String>, keyfile_path: Option<&Path>, kdf_memory: u64,
 ) -> anyhow::Result<(Database, DatabaseKey, Vec<Entry>)> {
 	anyhow::ensure!(
-		kdf_memory >= crate::config::MIB && kdf_memory % crate::config::MIB == 0,
+		kdf_memory >= crate::config::MIB && kdf_memory.is_multiple_of(crate::config::MIB),
 		"KDF memory must be a positive whole number of MiB"
 	);
 	anyhow::ensure!(kdf_memory / 1024 <= u64::from(u32::MAX), "KDF memory is too large");
