@@ -1,7 +1,17 @@
 use std::io::{self, IsTerminal, Write};
 
-use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
-use ratatui::widgets::{Paragraph, Wrap};
+use crossterm::{
+	cursor::{MoveTo, Show},
+	event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
+	execute,
+	style::ResetColor,
+	terminal::{disable_raw_mode, enable_raw_mode},
+};
+use ratatui::{
+	Terminal,
+	backend::CrosstermBackend,
+	widgets::{Paragraph, Wrap},
+};
 
 const README: &str = include_str!("../README.md");
 const IGNORE_TOP_LINES: usize = 7;
@@ -10,7 +20,8 @@ pub fn run() -> io::Result<()> {
 	if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
 		return io::stdout().lock().write_all(README.as_bytes());
 	}
-	let mut guard = crate::TerminalGuard::new();
+	let mut guard = ReadmeTerminal::new()?;
+	guard.terminal.clear()?;
 	let mut top = Paragraph::new(README.lines().take(IGNORE_TOP_LINES).collect::<Vec<_>>().join("\n"))
 		.wrap(Wrap { trim: false })
 		.line_count(guard.terminal.size()?.width);
@@ -43,4 +54,28 @@ pub fn run() -> io::Result<()> {
 		}
 	}
 	Ok(())
+}
+
+// README pages are public: keep the last page on the main screen when closing.
+struct ReadmeTerminal {
+	terminal: ratatui::DefaultTerminal,
+}
+
+impl ReadmeTerminal {
+	fn new() -> io::Result<Self> {
+		let terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
+		enable_raw_mode()?;
+		Ok(Self { terminal })
+	}
+}
+
+impl Drop for ReadmeTerminal {
+	fn drop(&mut self) {
+		let _ = disable_raw_mode();
+		let mut out = io::stdout();
+		let bottom = self.terminal.size().map(|size| size.height.saturating_sub(1)).unwrap_or(0);
+		let _ = execute!(out, ResetColor, Show, MoveTo(0, bottom));
+		let _ = out.write_all(b"\r\n");
+		let _ = out.flush();
+	}
 }

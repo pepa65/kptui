@@ -944,7 +944,7 @@ mod format_selection_tests {
 	fn configuration_format_action_saves_and_updates_its_label() {
 		let path = std::env::temp_dir().join(format!("kptui-config-format-{}.kdbx", std::process::id()));
 		let password = Zeroizing::new("format-test".to_string());
-		let (db, key, entries) = crate::db::create_database(&path, 1, &password, None, crate::config::DEFAULT_KDF_MEMORY).unwrap();
+		let (db, key, entries) = crate::db::create_database(&path, 1, &password, None, crate::config::MIB).unwrap();
 		let mut app = crate::app::start(false, Zeroizing::new(String::new()));
 		app.screen = Screen::Settings;
 		app.db_version = Some("KDBX4.1".to_string());

@@ -235,7 +235,7 @@ mod unlock_status_tests {
 	fn enter_draws_unlocking_before_decryption_and_clears_it_afterward() {
 		let path = std::env::temp_dir().join(format!("kptui-unlock-status-{}.kdbx", std::process::id()));
 		let password = Zeroizing::new("unlock-test".to_string());
-		crate::db::create_database(&path, 1, &password, None, crate::config::DEFAULT_KDF_MEMORY).unwrap();
+		crate::db::create_database(&path, 1, &password, None, crate::config::MIB).unwrap();
 		let mut app = crate::app::start(false, Zeroizing::new(String::new()));
 		app.config.default_database = Some(path.clone());
 		app.config.keyfile = None;

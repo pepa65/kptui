@@ -124,15 +124,10 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 		Span::styled("[Enter] to export", placeholder),
 	];
 	let row_count = if app.login_settings { LOCKED_ROW_COUNT } else { UNLOCKED_ROW_COUNT };
-	let items = labels
-		.into_iter()
-		.zip(values)
-		.enumerate()
-		.take(row_count)
-		.map(|(row, (label, value))| {
-			let style = if selected == row { editing_style } else { label_style };
-			ListItem::new(Line::from(vec![Span::styled(label, style), Span::styled(": ", normal), value]))
-		});
+	let items = labels.into_iter().zip(values).enumerate().take(row_count).map(|(row, (label, value))| {
+		let style = if selected == row { editing_style } else { label_style };
+		ListItem::new(Line::from(vec![Span::styled(label, style), Span::styled(": ", normal), value]))
+	});
 
 	let version = app.kdbx.as_ref().map(|db| db.config.version.to_string()).or_else(|| app.db_version.clone());
 	let title = version.map_or_else(|| "Configuration ".to_string(), |version| format!("Configuration {version} "));

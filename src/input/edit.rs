@@ -358,7 +358,7 @@ mod save_shortcut_tests {
 	fn saves_database_when_selected_entry_is_absent() {
 		let path = std::env::temp_dir().join(format!("kptui-save-without-entry-{}.kdbx", std::process::id()));
 		let password = Zeroizing::new("save-test".to_string());
-		let (mut db, key, _) = crate::db::create_database(&path, 1, &password, None, crate::config::DEFAULT_KDF_MEMORY).unwrap();
+		let (mut db, key, _) = crate::db::create_database(&path, 1, &password, None, crate::config::MIB).unwrap();
 		db.root_mut().add_entry().set_unprotected(keepass::db::fields::TITLE, "Existing entry");
 		let mut app = crate::app::start(false, Zeroizing::new(String::new()));
 		app.kdbx = Some(db);
