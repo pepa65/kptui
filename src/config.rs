@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::util::expand_tilde;
 
-const SAMPLE_CONFIG: &str = include_str!("../default_config.toml");
-const AUTO_EXIT: u64 = 300;
+const SAMPLE_CONFIG: &str = include_str!("../config.toml");
+const AUTO_EXIT: u64 = 0;
 const CONFIGFILE: &str = "~/.config/kptui/config.toml";
 const KDF_ITERATIONS: u64 = 90;
 pub const MIB: u64 = 1024 * 1024;
@@ -84,7 +84,7 @@ pub fn load_config() -> anyhow::Result<Config> {
 
 	if !path.exists() {
 		if let Some(parent) = path.parent() {
-			fs::create_dir_all(parent).with_context(|| format!("couldn't create {}", parent.display()))?;
+			fs::create_dir_all(parent).with_context(|| format!("couldn't create directory {}", parent.display()))?;
 		}
 
 		let mut options = fs::OpenOptions::new();
@@ -93,16 +93,16 @@ pub fn load_config() -> anyhow::Result<Config> {
 		match result {
 			Ok(mut file) => {
 				use std::io::Write;
-				file.write_all(SAMPLE_CONFIG.as_bytes()).with_context(|| format!("couldn't write {}", path.display()))?;
+				file.write_all(SAMPLE_CONFIG.as_bytes()).with_context(|| format!("couldn't write file {}", path.display()))?;
 			}
 			Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
 			Err(error) => {
-				return Err(error).with_context(|| format!("couldn't create {}", path.display()));
+				return Err(error).with_context(|| format!("couldn't create file {}", path.display()));
 			}
 		}
 	}
 
-	let text = fs::read_to_string(&path).with_context(|| format!("couldn't read {}", path.display()))?;
+	let text = fs::read_to_string(&path).with_context(|| format!("couldn't read file {}", path.display()))?;
 	parse_config(&text)
 }
 

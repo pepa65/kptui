@@ -17,10 +17,12 @@ use std::process::ExitCode;
 use zeroize::Zeroizing;
 
 const BIN_NAME: &str = env!("CARGO_BIN_NAME");
-const USAGE: &str = concat!("Usage: ", env!("CARGO_BIN_NAME"), " [tui | slim | gui | version | help]");
+const USAGE: &str = concat!("Usage: ", env!("CARGO_BIN_NAME"), " [tui | slim | gui | readme | help | version]");
+const DOT: &str = "•";
 
 enum Command {
 	Help,
+	Readme,
 	Version,
 	Tui(bool),
 	Gui,
@@ -71,6 +73,7 @@ fn parse_args(args: &[String]) -> Result<Command, String> {
 		[] => Ok(Command::Tui(false)),
 		[arg] if matches!(arg.as_str(), "tui" | "--tui") => Ok(Command::Tui(false)),
 		[arg, ..] if matches!(arg.as_str(), "help" | "-h" | "--help") => Ok(Command::Help),
+		[arg, ..] if matches!(arg.as_str(), "readme" | "-r" | "--readme") => Ok(Command::Readme),
 		[arg, ..] if matches!(arg.as_str(), "version" | "-V" | "--version") => Ok(Command::Version),
 		[arg] if matches!(arg.as_str(), "slim" | "-s" | "--slim") => Ok(Command::Tui(true)),
 		[arg] if matches!(arg.as_str(), "gui" | "--gui") => Ok(Command::Gui),
@@ -133,6 +136,11 @@ fn main() -> std::process::ExitCode {
 			};
 			println!("{BIN_NAME} {} - {description}", env!("CARGO_PKG_VERSION"));
 			println!("{USAGE}");
+			ExitCode::SUCCESS
+		}
+
+		Command::Readme => {
+			println!("{}", include_str!("../README.md"));
 			ExitCode::SUCCESS
 		}
 

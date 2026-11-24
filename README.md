@@ -49,11 +49,12 @@
   - Export to file
 * **Import from other vaults or export**: Import entries from another `.kdbx` file, or from a `.csv`/`.json` file
   (as produced by other password managers). Export to CSV/JSON or KDBX.
+* **Documentation included**: The binary includes this full Readme, do: `kptui readme`.
 
 ## Usage
 ```
-kptui 0.40.0 - TUI password manager for KeePass vaults
-Usage:  kptui [slim | version | help]
+kptui 0.40.0 - Highly secure TUI password manager for KeePass KDBX files (+GUI)
+Usage: kptui [tui | slim | gui | readme | help | version]
 ```
 
 ## Installing

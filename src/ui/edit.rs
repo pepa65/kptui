@@ -60,7 +60,7 @@ fn field_help_items(slim_mode: bool, multiline: bool, password: Option<bool>) ->
 /// character becomes as many dots as it is wide, so the cursor and the visible
 /// part of the field editor line up just like with the password itself.
 fn masked(text: &str) -> String {
-	text.graphemes(true).map(|cluster| super::DOT.repeat(cluster.width())).collect()
+	text.graphemes(true).map(|cluster| crate::DOT.repeat(cluster.width())).collect()
 }
 
 fn split_edit_area(area: Rect, help_line_count: usize) -> (Rect, Rect) {
@@ -437,14 +437,13 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) -> Option<EditView> {
 #[cfg(test)]
 mod mask_tests {
 	use super::{masked, nav_help_items, reveal_item};
-	use crate::ui::DOT;
 	use unicode_width::UnicodeWidthStr;
 
 	#[test]
 	fn masks_keep_the_width_of_the_password() {
 		assert_eq!(masked(""), "");
-		assert_eq!(masked("pässwörd"), DOT.repeat(8));
-		assert_eq!(masked("猫z"), DOT.repeat(3));
+		assert_eq!(masked("pässwörd"), crate::DOT.repeat(8));
+		assert_eq!(masked("猫z"), crate::DOT.repeat(3));
 		for text in ["correct horse", "猫z", "e\u{301}x"] {
 			assert_eq!(masked(text).width(), text.width(), "{text}");
 		}
