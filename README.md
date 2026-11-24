@@ -39,14 +39,17 @@
   in seconds (`0`: stays open indefinitely).
 * **Themeable**: Ships with a range of themes and supports custom themes.
 * **Access Configuration from the app**: On the Login screen or the Index screen, give `Ctrl-c`:
-  - Configuration file: `~/.config/kptui/config.toml`
-  - Database (default: `~/.local/share/kptui/default.kdbx`)
-  - (Optional) keyfile
-  - Auto-exit setting (in seconds, `0`: never auto-exit)
-  - Theme selection (location: `~/.config/kptui/themes/`)
-  - Change the master password
-  - Import from file
-  - Export to file
+  - Default configfile: `~/.config/kptui/config.toml`
+  - Database [default: `~/.local/share/kptui/default.kdbx`]
+  - (Optional) keyfile [default: ""]
+  - KDF iterations [default: 90]
+  - KDF memory [default: 256M]
+  - Auto-exit setting (in seconds, `0`: never auto-exit) [default: 0]
+  - Theme selection (themes directory: `~/.config/kptui/themes/`)
+  - Save as KDBX4.x [x=0 when the database version is KDBX4.1, otherwise x=1] (only from Index screen)
+  - Change the master password (only from Index screen)
+  - Import from file (only from Index screen)
+  - Export to file (only from Index screen)
 * **Import from other vaults or export**: Import entries from another `.kdbx` file, or from a `.csv`/`.json` file
   (as produced by other password managers). Export to CSV/JSON or KDBX.
 * **Documentation included**: The binary includes this full Readme, do: `kptui readme`.
@@ -54,7 +57,8 @@
 ## Usage
 ```
 kptui 0.41.0 - Highly secure TUI password manager for KeePass KDBX files (+GUI)
-Usage: kptui [tui | slim | gui | readme | help | version]
+Usage: kptui [tui | slim | gui | readme | help | version] [NAME[.toml]]
+  NAME[.toml] (default: config) selects configfile ~/.config/kptui/NAME.toml
 ```
 
 ## Installing
@@ -118,16 +122,11 @@ It will be installed in `~/.cargo/bin/` which will need to be added to `PATH`!
       Also allow importing/exporting and re-encrypting the database with a different password or keyfile,
       or different KDF values for Itrerations and Memory.
 * Once unlocked, entries can be browsed, searched and opened from the Index screen.
-* To open an existing vault, set `database` in the config file at `~/.config/kptui/config.toml`.
+* To open an existing vault, set `database` in the configfile at `~/.config/kptui/config.toml`.
   - It can also be set on the Configuration screen that's accessible with `Ctrl-c` from the Login screen.
   - If a keyfile is required, that can also be set in the Config screen with `Ctrl-c` in the Login screen.
-```toml
-# Example
-database = "~/passwords.kdbx"
-keyfile = ""  # Empty means: no keyfile is set
-kdf_iterations = 90  # The default
-kdf_memory = "256M"  # 256 MiB; also accepts a byte count (unquoted!)
-```
+  - Alternative configfiles can be initiated/selected from the commandline: `kptui new` creates (or uses)
+   `~/.config/kptui/new.toml`
 * The interface requires a terminal dimensions of at least 44 colums by 24 rows (but 24x12 is still functional).
 * Run in smaller terminals with: `kptui slim` (at least 27 columns by 10 rows required, but 19x11 is still functional).
 * To show the version: `kptui version`
@@ -138,15 +137,18 @@ kdf_memory = "256M"  # 256 MiB; also accepts a byte count (unquoted!)
   - Use a file with the password: `kptui <password_file`
 
 ## Configuration
-The configuration file is at a fixed location: `~/.config/kptui/config.toml`.
-See `default_config.toml` in this repo:
+The default configuration file is `~/.config/kptui/config.toml`.
+Pass an optional filename (`.toml` is optional) to use another file in `~/.config/kptui/`, for example
+`kpgui work`, `kptui slim slim.toml`, or `kpgui default.toml` (must follow the optional 'mode' command).
+Missing files are created with default values, and configuration changes are saved to the selected file.
+See `config.toml` in this repo:
 ```toml
 database = "~/.local/share/kptui/default.kdbx"
 keyfile = "~/.local/share/kptui/default.keyx"  # Optional (empty for password-only vaults)
 kdf_iterations = 90  # Can be lower if less paranoid about being brute-forced
 kdf_memory = "256M"  # 256 MiB, also accepts byte count (unquoted!)
-auto_exit = 300  # Seconds of inactivity before exiting the app
-theme = "melange_dark.toml"  # Theme from ~/.local/share/kptui/themes
+auto_exit = 0  # Seconds of inactivity before exiting the app (0: never auto-exit)
+theme = "default"  # Theme in ~/.local/share/kptui/themes/
 ```
 
 All fields are optional, as the above are the default values.

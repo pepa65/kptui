@@ -11,7 +11,7 @@ use ratatui::{
 use super::edit::EditView;
 use crate::app::{App, ExportStep, ImportStep};
 use crate::input::fieldedit::FieldEditor;
-use crate::input::settings::{AUTO_EXIT_ROW, CHANGE_PASSWORD_ROW, FORMAT_ROW, LOCKED_ROW_COUNT, UNLOCKED_ROW_COUNT, format_save_target, settings_row};
+use crate::input::settings::{AUTO_EXIT_ROW, LOCKED_ROW_COUNT, UNLOCKED_ROW_COUNT, format_save_target, settings_row};
 use crate::util::wrap_help_items;
 use unicode_width::UnicodeWidthStr;
 
@@ -91,12 +91,12 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 	let labels = [
 		"Database",
 		"Keyfile (optional)",
-		format_label.as_str(),
 		"KDF iterations (time cost)",
 		"KDF memory (MiB)",
-		"Change master password",
 		"Auto-exit (seconds)",
 		"Theme",
+		format_label.as_str(),
+		"Change master password",
 		"Import data",
 		"Export data",
 	];
@@ -114,12 +114,12 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 	let values = [
 		path_value(app.config.default_database.as_deref()),
 		path_value(app.config.keyfile.as_deref()),
-		Span::styled("[Enter] to save", placeholder),
 		Span::styled(app.config.kdf_iterations.to_string(), normal),
 		Span::styled((app.config.kdf_memory as f64 / crate::config::MIB as f64).to_string(), normal),
-		Span::styled("[Enter] to change", placeholder),
 		Span::styled(app.config.auto_exit.as_secs().to_string(), normal),
 		theme_value,
+		Span::styled("[Enter] to save", placeholder),
+		Span::styled("[Enter] to change", placeholder),
 		Span::styled("[Enter] to import", placeholder),
 		Span::styled("[Enter] to export", placeholder),
 	];
@@ -128,7 +128,6 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 		.into_iter()
 		.zip(values)
 		.enumerate()
-		.filter(|(row, _)| !app.login_settings || !matches!(*row, FORMAT_ROW | CHANGE_PASSWORD_ROW))
 		.take(row_count)
 		.map(|(row, (label, value))| {
 			let style = if selected == row { editing_style } else { label_style };

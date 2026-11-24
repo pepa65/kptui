@@ -118,6 +118,7 @@ fn parse_hex(hex: &str) -> anyhow::Result<Color> {
 const DEFAULT_THEMES: &[(&str, &str)] = &[
 	("catppuccin_latte.toml", include_str!("../themes/catppuccin_latte.toml")),
 	("catppuccin_mocha.toml", include_str!("../themes/catppuccin_mocha.toml")),
+	("default.toml", include_str!("../themes/default.toml")),
 	("dracula.toml", include_str!("../themes/dracula.toml")),
 	("mako.toml", include_str!("../themes/mako.toml")),
 	("melange_dark.toml", include_str!("../themes/melange_dark.toml")),

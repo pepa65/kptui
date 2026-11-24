@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use anyhow::Context;
@@ -10,6 +11,22 @@ use crate::util::expand_tilde;
 const SAMPLE_CONFIG: &str = include_str!("../config.toml");
 const AUTO_EXIT: u64 = 0;
 const CONFIGFILE: &str = "~/.config/kptui/config.toml";
+static CONFIG_PATH: OnceLock<PathBuf> = OnceLock::new();
+
+pub fn is_config_filename(name: &str) -> bool {
+	name.len() > 5 && !name.contains(['/', '\\']) && Path::new(name).extension().is_some_and(|ext| ext == "toml")
+}
+
+pub fn select_config(name: &str) -> anyhow::Result<()> {
+	anyhow::ensure!(is_config_filename(name), "expected a filename ending in .toml");
+	let path = expand_tilde("~/.config/kptui").join(name);
+	CONFIG_PATH.set(path).map_err(|_| anyhow::anyhow!("configuration file already selected"))
+}
+
+fn config_path() -> PathBuf {
+	CONFIG_PATH.get().cloned().unwrap_or_else(|| expand_tilde(CONFIGFILE))
+}
+
 const KDF_ITERATIONS: u64 = 90;
 pub const MIB: u64 = 1024 * 1024;
 pub const DEFAULT_KDF_MEMORY: u64 = 256 * MIB;
@@ -80,8 +97,12 @@ impl KdfMemoryValue {
 }
 
 pub fn load_config() -> anyhow::Result<Config> {
-	let path = expand_tilde(CONFIGFILE);
+	let path = config_path();
+	let initial = if CONFIG_PATH.get().is_some() { serialize_config(&Config::default())? } else { SAMPLE_CONFIG.to_string() };
+	load_config_at(&path, &initial)
+}
 
+fn load_config_at(path: &Path, initial: &str) -> anyhow::Result<Config> {
 	if !path.exists() {
 		if let Some(parent) = path.parent() {
 			fs::create_dir_all(parent).with_context(|| format!("couldn't create directory {}", parent.display()))?;
@@ -89,11 +110,11 @@ pub fn load_config() -> anyhow::Result<Config> {
 
 		let mut options = fs::OpenOptions::new();
 		options.write(true).create_new(true);
-		let result = options.open(&path);
+		let result = options.open(path);
 		match result {
 			Ok(mut file) => {
 				use std::io::Write;
-				file.write_all(SAMPLE_CONFIG.as_bytes()).with_context(|| format!("couldn't write file {}", path.display()))?;
+				file.write_all(initial.as_bytes()).with_context(|| format!("couldn't write file {}", path.display()))?;
 			}
 			Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
 			Err(error) => {
@@ -102,7 +123,7 @@ pub fn load_config() -> anyhow::Result<Config> {
 		}
 	}
 
-	let text = fs::read_to_string(&path).with_context(|| format!("couldn't read file {}", path.display()))?;
+	let text = fs::read_to_string(path).with_context(|| format!("couldn't read file {}", path.display()))?;
 	parse_config(&text)
 }
 
@@ -130,14 +151,16 @@ struct ConfigFileOut<'a> {
 }
 
 pub fn save_config(config: &Config) -> anyhow::Result<()> {
-	let path = expand_tilde(CONFIGFILE);
+	save_config_at(config, &config_path())
+}
 
+fn save_config_at(config: &Config, path: &Path) -> anyhow::Result<()> {
 	if let Some(parent) = path.parent() {
 		fs::create_dir_all(parent).with_context(|| format!("couldn't create {}", parent.display()))?;
 	}
 
 	let text = serialize_config(config)?;
-	let tmp_path = sibling_tmp_path(&path);
+	let tmp_path = sibling_tmp_path(path);
 
 	let mut options = fs::OpenOptions::new();
 	options.write(true).create_new(true);
@@ -151,7 +174,7 @@ pub fn save_config(config: &Config) -> anyhow::Result<()> {
 
 		file.sync_all().with_context(|| format!("couldn't sync {}", tmp_path.display()))?;
 
-		fs::rename(&tmp_path, &path).with_context(|| format!("couldn't replace {}", path.display()))?;
+		fs::rename(&tmp_path, path).with_context(|| format!("couldn't replace {}", path.display()))?;
 
 		Ok(())
 	})();
@@ -184,6 +207,29 @@ fn serialize_config(config: &Config) -> anyhow::Result<String> {
 mod tests {
 	use super::{Config, parse_config, serialize_config};
 	use std::path::PathBuf;
+
+	#[test]
+	fn selected_file_is_created_with_defaults_and_saved_independently() {
+		let directory = std::env::temp_dir().join(format!("kptui-config-argument-{}", std::process::id()));
+		let selected = directory.join("nested/Work.toml");
+		let default_path = directory.join("nested/config.toml");
+		let initial = serialize_config(&Config::default()).unwrap();
+		let mut config = super::load_config_at(&selected, &initial).unwrap();
+		assert!(selected.is_file());
+		assert!(config.default_database.is_none());
+		assert!(config.keyfile.is_none());
+		assert_eq!(config.kdf_iterations, Config::default().kdf_iterations);
+		assert_eq!(config.kdf_memory, Config::default().kdf_memory);
+		assert_eq!(config.auto_exit, Config::default().auto_exit);
+		assert!(config.theme.is_none());
+		std::fs::write(&default_path, "unchanged").unwrap();
+		config.kdf_iterations = 42;
+		super::save_config_at(&config, &selected).unwrap();
+		let loaded = super::load_config_at(&selected, &initial).unwrap();
+		assert_eq!(loaded.kdf_iterations, 42);
+		assert_eq!(std::fs::read_to_string(default_path).unwrap(), "unchanged");
+		std::fs::remove_dir_all(directory).unwrap();
+	}
 
 	#[test]
 	fn parses_optional_keyfile_path() {

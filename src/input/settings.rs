@@ -17,18 +17,17 @@ pub const LOCKED_ROW_COUNT: usize = 6;
 
 pub const DATABASE_ROW: usize = 0;
 pub const KEYFILE_ROW: usize = 1;
-pub const FORMAT_ROW: usize = 2;
-pub const ITERATIONS_ROW: usize = 3;
-pub const MEMORY_ROW: usize = 4;
-pub const CHANGE_PASSWORD_ROW: usize = 5;
-pub const AUTO_EXIT_ROW: usize = 6;
-pub const THEME_ROW: usize = 7;
+pub const ITERATIONS_ROW: usize = 2;
+pub const MEMORY_ROW: usize = 3;
+pub const AUTO_EXIT_ROW: usize = 4;
+pub const THEME_ROW: usize = 5;
+pub const FORMAT_ROW: usize = 6;
+pub const CHANGE_PASSWORD_ROW: usize = 7;
 pub const IMPORT_ROW: usize = 8;
 pub const EXPORT_ROW: usize = 9;
 
-pub(crate) fn settings_row(app: &App, visible_row: usize) -> usize {
-	let row = if app.login_settings && visible_row >= FORMAT_ROW { visible_row + 1 } else { visible_row };
-	if app.login_settings && row >= CHANGE_PASSWORD_ROW { row + 1 } else { row }
+pub(crate) fn settings_row(_app: &App, visible_row: usize) -> usize {
+	visible_row
 }
 
 pub(crate) fn format_save_target(app: &App) -> keepass::config::DatabaseVersion {
@@ -922,12 +921,12 @@ fn apply_selected_theme(app: &mut App) {
 fn settings_rows_are_contiguous() {
 	assert_eq!(DATABASE_ROW, 0);
 	assert_eq!(KEYFILE_ROW, 1);
-	assert_eq!(FORMAT_ROW, 2);
-	assert_eq!(ITERATIONS_ROW, 3);
-	assert_eq!(MEMORY_ROW, 4);
-	assert_eq!(AUTO_EXIT_ROW, 6);
-	assert_eq!(THEME_ROW, 7);
-	assert_eq!(CHANGE_PASSWORD_ROW, 5);
+	assert_eq!(FORMAT_ROW, 6);
+	assert_eq!(ITERATIONS_ROW, 2);
+	assert_eq!(MEMORY_ROW, 3);
+	assert_eq!(AUTO_EXIT_ROW, 4);
+	assert_eq!(THEME_ROW, 5);
+	assert_eq!(CHANGE_PASSWORD_ROW, 7);
 	assert_eq!(IMPORT_ROW, 8);
 	assert_eq!(EXPORT_ROW, 9);
 	assert_eq!(UNLOCKED_ROW_COUNT, 10);

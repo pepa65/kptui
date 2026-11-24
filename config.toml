@@ -14,4 +14,4 @@ kdf_memory = "256M"
 auto_exit = 0
 
 # Name of a theme installed in ~/.config/kptui/themes/
-theme = "mélange_dark"
+theme = "default"

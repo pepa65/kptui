@@ -1,0 +1,20 @@
+name = "Default"
+version = 1
+
+[colors]
+background = "#1E1E2E"
+text = "#CDD6F4"
+border = "#45475A"
+header = "#9399B2"
+accent = "#CBA6F7"
+warning = "#F9E2AF"
+error = "#F38BA8"
+selection_fg = "#1E1E2E"
+selection_bg = "#89B4FA"
+
+claws = "#437DB6"
+claws_light = "#64A0D2"
+claws_shadow = "#2D5C91"
+shell = "#567468"
+shell_light = "#789488"
+shell_shadow = "#3A524A"
