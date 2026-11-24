@@ -6,6 +6,7 @@ mod export;
 mod gui;
 mod import;
 mod input;
+mod readme;
 mod theme;
 mod ui;
 mod util;
@@ -174,10 +175,13 @@ fn main() -> std::process::ExitCode {
 			ExitCode::SUCCESS
 		}
 
-		Command::Readme => {
-			println!("{}", include_str!("../README.md"));
-			ExitCode::SUCCESS
-		}
+		Command::Readme => match readme::run() {
+			Ok(()) => ExitCode::SUCCESS,
+			Err(err) => {
+				eprintln!("{BIN_NAME}: {err}");
+				ExitCode::FAILURE
+			}
+		},
 
 		Command::Version => {
 			println!("{BIN_NAME} {}", env!("CARGO_PKG_VERSION"));

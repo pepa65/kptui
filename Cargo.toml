@@ -46,7 +46,7 @@ wayland-client = { version = "0.31", optional = true }
 xkbcommon = { version = "0.9", features = ["wayland"], optional = true }
 
 [dependencies]
-ratatui = "0.30"
+ratatui = { version = "0.30", features = ["unstable-rendered-line-info"] }
 crossterm = "0.29"
 rustix = { version = "1", default-features = false, features = ["process"] }
 serde = { version = "1", features = ["derive"] }
