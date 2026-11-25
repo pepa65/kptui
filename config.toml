@@ -15,3 +15,7 @@ auto_exit = 0
 
 # Name of a theme installed in ~/.config/kptui/themes/
 theme = "default"
+
+# Inside tmux, Ctrl-y on an entry copies the selected field to a tmux paste buffer,
+# which tmux deletes after this number of seconds (0: no copying to tmux) [default: 0]
+tmux_clear = 0

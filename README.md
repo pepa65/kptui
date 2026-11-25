@@ -39,6 +39,9 @@
 * **Auto-exit**: The whole app can close itself automatically after a set period of inactivity
   in seconds (`0`: stays open indefinitely).
 * **Themeable**: Ships with a range of themes and supports custom themes.
+* **Copy to tmux** (off by default): With `tmux_clear` set and kptui running inside tmux, `Ctrl-y` on an entry copies
+  the selected field (or the current TOTP code) to a tmux paste buffer, to paste with `prefix ]`. This also works
+  while the password is hidden. tmux deletes the buffer after `tmux_clear` seconds, or earlier when kptui exits.
 * **Access Configuration from the app**: On the Login screen or the Index screen, give `Ctrl-c`:
   - Default configfile: `~/.config/kptui/config.toml`
   - Database [default: `~/.local/share/kptui/default.kdbx`]
@@ -47,6 +50,7 @@
   - KDF memory [default: 256M]
   - Auto-exit setting (in seconds, `0`: never auto-exit) [default: 0]
   - Theme selection (themes directory: `~/.config/kptui/themes/`)
+  - Seconds before a value copied to tmux gets deleted (`0`: no copying to tmux) [default: 0]
   - Save as KDBX4.x [x=0 when the database version is KDBX4.1, otherwise x=1] (only from Index screen)
   - Change the master password (only from Index screen)
   - Import from file (only from Index screen)
@@ -154,6 +158,7 @@ kdf_iterations = 90  # Can be lower if less paranoid about being brute-forced
 kdf_memory = "256M"  # 256 MiB, also accepts byte count (unquoted!)
 auto_exit = 0  # Seconds of inactivity before exiting the app (0: never auto-exit)
 theme = "default"  # Theme in ~/.local/share/kptui/themes/
+tmux_clear = 0  # Seconds before tmux deletes a value copied with Ctrl-y (0: no copying to tmux)
 ```
 
 All fields are optional, as the above are the default values.
@@ -173,6 +178,13 @@ All fields are optional, as the above are the default values.
 * When the app exits, there are no plaintext secrets left anywhere in memory.
 * Passwords are hidden on screen unless shown with `Ctrl-r`, and hidden again for every entry that gets opened.
   In the GUI, a hidden password can be selected with the mouse too, so it can be copied without showing it.
+* Copying to tmux is off by default. When enabled, a copied value is in the tmux server's memory, out of kptui's control:
+  - The value is piped into `tmux load-buffer -`, so it never shows up in process arguments or environments.
+  - Only a buffer holding exactly the copied value is ever deleted, and copying again deletes the previous one.
+  - Its deletion after `tmux_clear` seconds is scheduled in the tmux server (tmux 3.2 or newer), so it also happens
+    when kptui gets killed or its pane is closed. On a normal exit kptui deletes it right away.
+  - tmux doesn't wipe the memory of a deleted buffer, so (parts of) the value can stay there until it gets reused.
+  - If tmux fails while its buffers are being listed, the status says that the value can't be cleared.
 * Using encrypted swap or zram (or no swap) increases security.
 * Booting with kernel cmdline option `init_on_free=1` causes every freed page to get zeroed.
 * On Linux, some extra hardening takes place in the operation of kptui.

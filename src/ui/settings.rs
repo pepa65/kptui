@@ -11,7 +11,7 @@ use ratatui::{
 use super::edit::EditView;
 use crate::app::{App, ExportStep, ImportStep};
 use crate::input::fieldedit::FieldEditor;
-use crate::input::settings::{AUTO_EXIT_ROW, LOCKED_ROW_COUNT, UNLOCKED_ROW_COUNT, format_save_target, settings_row};
+use crate::input::settings::{AUTO_EXIT_ROW, LOCKED_ROW_COUNT, TMUX_CLEAR_ROW, UNLOCKED_ROW_COUNT, format_save_target, settings_row};
 use crate::util::wrap_help_items;
 use unicode_width::UnicodeWidthStr;
 
@@ -95,6 +95,7 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 		"KDF memory (MiB)",
 		"Auto-exit (seconds)",
 		"Theme",
+		"tmux clear (seconds, 0: off)",
 		format_label.as_str(),
 		"Change master password",
 		"Import data",
@@ -118,6 +119,7 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 		Span::styled((app.config.kdf_memory as f64 / crate::config::MIB as f64).to_string(), normal),
 		Span::styled(app.config.auto_exit.as_secs().to_string(), normal),
 		theme_value,
+		Span::styled(app.config.tmux_clear.as_secs().to_string(), normal),
 		Span::styled("[Enter] to save", placeholder),
 		Span::styled("[Enter] to change", placeholder),
 		Span::styled("[Enter] to import", placeholder),
@@ -138,7 +140,7 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 	frame.render_stateful_widget(list, vertical[0], &mut app.settings_state);
 
 	if editing_field
-		&& selected <= AUTO_EXIT_ROW
+		&& (selected <= AUTO_EXIT_ROW || selected == TMUX_CLEAR_ROW)
 		&& let Some(editor) = app.field_editor.as_ref()
 		&& let Some(row) = app.settings_state.selected().unwrap_or(0).checked_sub(app.settings_state.offset())
 		&& row < usize::from(list_area.height)

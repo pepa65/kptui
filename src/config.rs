@@ -48,6 +48,8 @@ pub struct Config {
 	pub kdf_memory: u64,
 	pub auto_exit: Duration,
 	pub theme: Option<String>,
+	/// When tmux deletes a copied value (0: copying to tmux is off).
+	pub tmux_clear: Duration,
 }
 
 impl Default for Config {
@@ -59,6 +61,7 @@ impl Default for Config {
 			kdf_memory: DEFAULT_KDF_MEMORY,
 			auto_exit: Duration::from_secs(AUTO_EXIT),
 			theme: None,
+			tmux_clear: Duration::ZERO,
 		}
 	}
 }
@@ -72,6 +75,7 @@ struct ConfigFile {
 	kdf_memory: Option<KdfMemoryValue>,
 	auto_exit: Option<u64>,
 	theme: Option<String>,
+	tmux_clear: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -141,6 +145,7 @@ fn parse_config(text: &str) -> anyhow::Result<Config> {
 		kdf_memory: raw.kdf_memory.map(KdfMemoryValue::into_bytes).transpose()?.unwrap_or(defaults.kdf_memory),
 		auto_exit: raw.auto_exit.map(Duration::from_secs).unwrap_or(defaults.auto_exit),
 		theme: raw.theme,
+		tmux_clear: raw.tmux_clear.map(Duration::from_secs).unwrap_or(defaults.tmux_clear),
 	})
 }
 
@@ -152,6 +157,7 @@ struct ConfigFileOut<'a> {
 	kdf_memory: KdfMemoryValue,
 	auto_exit: u64,
 	theme: Option<&'a str>,
+	tmux_clear: u64,
 }
 
 pub fn save_config(config: &Config) -> anyhow::Result<()> {
@@ -202,6 +208,7 @@ fn serialize_config(config: &Config) -> anyhow::Result<String> {
 		},
 		auto_exit: config.auto_exit.as_secs(),
 		theme: config.theme.as_deref(),
+		tmux_clear: config.tmux_clear.as_secs(),
 	};
 
 	toml::to_string_pretty(&out).context("couldn't serialize config")
@@ -209,8 +216,23 @@ fn serialize_config(config: &Config) -> anyhow::Result<String> {
 
 #[cfg(test)]
 mod tests {
-	use super::{Config, parse_config, serialize_config};
+	use super::{Config, SAMPLE_CONFIG, parse_config, serialize_config};
 	use std::path::PathBuf;
+	use std::time::Duration;
+
+	#[test]
+	fn copying_to_tmux_is_off_by_default() {
+		for text in ["", "tmux_clear = 0", SAMPLE_CONFIG] {
+			assert_eq!(parse_config(text).expect("config should parse").tmux_clear, Duration::ZERO, "{text}");
+		}
+	}
+
+	#[test]
+	fn tmux_clear_round_trips() {
+		let config = parse_config("tmux_clear = 5").expect("config should parse");
+		assert_eq!(config.tmux_clear, Duration::from_secs(5));
+		assert!(serialize_config(&config).expect("config should serialize").contains("tmux_clear = 5"));
+	}
 
 	#[test]
 	fn selected_file_is_created_with_defaults_and_saved_independently() {
