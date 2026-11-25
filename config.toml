@@ -13,5 +13,8 @@ kdf_memory = "256M"
 # Seconds of inactivity before exiting the app (0: never auto-exit) [default: 0]
 auto_exit = 0
 
+# Seconds to expiry of the tmux buffer after Ctrl-c on the Entry screen (0: disabled)
+clear-tmux = 0
+
 # Name of a theme installed in ~/.config/kptui/themes/
 theme = "default"

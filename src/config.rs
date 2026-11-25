@@ -55,6 +55,7 @@ pub struct Config {
 	pub auto_exit: Duration,
 	pub theme: Option<String>,
 	pub(crate) recovery: Option<Recovery>,
+	pub clear_tmux: Duration,
 }
 
 impl Default for Config {
@@ -67,6 +68,7 @@ impl Default for Config {
 			auto_exit: Duration::from_secs(AUTO_EXIT),
 			theme: None,
 			recovery: None,
+			clear_tmux: Duration::ZERO,
 		}
 	}
 }
@@ -80,6 +82,8 @@ struct ConfigFile {
 	kdf_memory: Option<KdfMemoryValue>,
 	auto_exit: Option<u64>,
 	theme: Option<String>,
+	#[serde(rename = "clear-tmux")]
+	clear_tmux: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -130,6 +134,7 @@ fn load_config_at(path: &Path, initial: &str) -> anyhow::Result<Config> {
 fn parse_config(text: &str) -> anyhow::Result<Config> {
 	let raw: ConfigFile = toml::from_str(text)?;
 	let defaults = Config::default();
+	anyhow::ensure!(raw.clear_tmux.unwrap_or(0) <= crate::tmux::MAX_CLEAR_SECONDS, "clear-tmux must be 0–86400 seconds");
 	Ok(Config {
 		default_database: raw.database.or(raw.default_database).map(|s| expand_tilde(&s)),
 		keyfile: raw.keyfile.filter(|s| !s.is_empty()).map(|s| expand_tilde(&s)),
@@ -138,6 +143,7 @@ fn parse_config(text: &str) -> anyhow::Result<Config> {
 		auto_exit: raw.auto_exit.map(Duration::from_secs).unwrap_or(defaults.auto_exit),
 		theme: raw.theme,
 		recovery: None,
+		clear_tmux: Duration::from_secs(raw.clear_tmux.unwrap_or(0)),
 	})
 }
 
@@ -149,6 +155,8 @@ struct ConfigFileOut<'a> {
 	kdf_memory: KdfMemoryValue,
 	auto_exit: u64,
 	theme: Option<&'a str>,
+	#[serde(rename = "clear-tmux")]
+	clear_tmux: u64,
 }
 
 pub fn save_config(config: &Config) -> anyhow::Result<()> {
@@ -203,12 +211,13 @@ fn serialize_config(config: &Config) -> anyhow::Result<String> {
 		},
 		auto_exit: config.auto_exit.as_secs(),
 		theme: config.theme.as_deref(),
+		clear_tmux: config.clear_tmux.as_secs(),
 	};
 
 	toml::to_string_pretty(&out).context("couldn't serialize config")
 }
 
-const CONFIG_KEYS: &[&str] = &["database", "default_database", "keyfile", "kdf_iterations", "kdf_memory", "auto_exit", "theme"];
+const CONFIG_KEYS: &[&str] = &["database", "default_database", "keyfile", "kdf_iterations", "kdf_memory", "auto_exit", "theme", "clear_tmux"];
 
 impl Config {
 	pub fn is_recovering(&self) -> bool {
@@ -307,6 +316,15 @@ pub fn repair_config_field(config: &mut Config, key: &str) -> anyhow::Result<Opt
 mod tests {
 	use super::{Config, parse_config, serialize_config};
 	use std::path::PathBuf;
+
+	#[test]
+	fn clear_tmux_is_opt_in_and_round_trips() {
+		assert!(parse_config("").unwrap().clear_tmux.is_zero());
+		let config = parse_config("clear-tmux = 30").unwrap();
+		assert_eq!(config.clear_tmux.as_secs(), 30);
+		assert!(serialize_config(&config).unwrap().contains("clear=tmux = 30"));
+		assert!(parse_config("clear-tmux = 86401").is_err());
+	}
 
 	#[test]
 	fn recovery_blocks_saves_until_all_bad_fields_are_fixed() {

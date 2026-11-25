@@ -139,9 +139,14 @@ pub struct App {
 
 	pub should_quit: bool,
 	pub slim_mode: bool,
+	pub tmux_buffer: crate::tmux::TmuxBuffer,
 }
 
 impl App {
+	pub fn tmux_copy(&self) -> bool {
+		!self.config.clear_tmux.is_zero() && crate::tmux::available()
+	}
+
 	fn compute_filtered(&self) -> Vec<usize> {
 		let query = Zeroizing::new(self.query.to_lowercase());
 
@@ -264,6 +269,7 @@ pub fn try_start(slim_mode: bool, password: Zeroizing<String>) -> anyhow::Result
 		status: None,
 		should_quit: false,
 		slim_mode,
+		tmux_buffer: crate::tmux::TmuxBuffer::default(),
 	};
 	app.db_version = app.config.default_database.as_deref().and_then(crate::db::kdbx_version);
 	if app.config.is_recovering() {

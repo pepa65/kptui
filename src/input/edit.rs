@@ -2,10 +2,11 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use keepass::config::DatabaseVersion;
 use zeroize::{Zeroize, Zeroizing};
 
-use crate::app::{App, Screen};
+use crate::app::{App, Screen, TotpCache};
 use crate::db::{parse_totp_edit_value, save_database_as, totp_edit_value};
 use crate::input::command::preview_entry;
 use crate::input::fieldedit::{EditAction, FieldEditor};
+use std::time::Instant;
 
 const FIELD_COUNT: usize = 6;
 const NAME_INDEX: usize = 0;
@@ -39,6 +40,7 @@ pub fn handle_edit_input(app: &mut App, key: KeyEvent) {
 		KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
 			request_save(app);
 		}
+		KeyCode::Char('c' | 'C') if key.modifiers.contains(KeyModifiers::CONTROL) && app.tmux_copy() => copy_selected_field(app),
 		_ if is_reveal_key(&key) => {
 			app.status = None;
 			app.show_password = !app.show_password;
@@ -60,6 +62,32 @@ pub fn handle_edit_input(app: &mut App, key: KeyEvent) {
 			}
 		}
 	}
+}
+
+fn copy_selected_field(app: &mut App) {
+	let selected = app.edit_state.selected().unwrap_or(0);
+	let Some(entry) = app.edit_entry.as_ref() else { return };
+	if selected == TOTP_INDEX && app.totp_cache.as_ref().is_none_or(|cache| cache.expires <= Instant::now()) {
+		app.totp_cache =
+			crate::db::current_totp_code(&entry.totp).map(|code| TotpCache { code: code.code, next: code.next, expires: Instant::now() + code.valid_for });
+	}
+	let (label, value) = match selected {
+		NAME_INDEX => ("Name", entry.name.as_str()),
+		USER_INDEX => ("User", entry.user.as_str()),
+		PASSWORD_INDEX => ("Password", entry.password.as_str()),
+		URL_INDEX => ("URL", entry.url.as_str()),
+		TOTP_INDEX => ("TOTP", app.totp_cache.as_ref().map_or("", |cache| cache.code.as_str())),
+		NOTES_INDEX => ("Notes", entry.notes.as_str()),
+		_ => return,
+	};
+	app.status = Some(if value.is_empty() {
+		format!("{label} is empty, nothing copied")
+	} else {
+		match app.tmux_buffer.copy(value, app.config.clear_tmux) {
+			Ok(()) => format!("{label} copied to tmux; expires in {}s", app.config.clear_tmux.as_secs()),
+			Err(error) => format!("{label} not copied: {error:#}"),
+		}
+	});
 }
 
 fn move_selection(app: &mut App, delta: i32) {

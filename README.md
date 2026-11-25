@@ -55,6 +55,12 @@
   (as produced by other password managers). Export to CSV/JSON or KDBX.
 * **Documentation included**: The binaries include this full Readme, do: `kptui readme` or `kpgui -r`.
   Scrolling with arrows, page keys, Home/End works, and q/Esc/Ctrl-C closes.
+* **Copy to tmux buffer**: When setting `Clear-tmux` on the Config screen (or clear-tmux in the configuration TOML file)
+  to a value greater than 0, the selected field on the Entry screen gets copied to a tmux buffer with `Ctrl-c` and
+  is retained for the set number of seconds. A value of `0` disables the feature. Hidden passwords can still be copied!
+  Add this opt-in binding to `~/.tmux.conf` (and reload tmux):
+	`bind-key C-v run-shell -C 'paste-buffer -p -d -b "#{@kptui-buffer}"'`
+  Then TMUX_PREFIX followed by ^v will paste that buffer.
 
 ## Usage
 ```
@@ -179,6 +185,7 @@ All fields are optional, as the above are the default values.
 * A GUI version of kptui is available on Linux, with the idea that no potentially secret text strings are somehow left (on ratatui or in screen buffers), because the GUI can be controlled completely by the app, so zeroizing can be more complete, at most leaving pixels in the shared buffer of the compositor (which Wayland completely wipes). Both X11 and Wayland zeroizes their text assembly buffers and their Cairo image on drop.
   - There is an issue with entering passwords in X11 (not just for `kpgui` or `kptui`, for any application!) that any process running on the same X-server (or as the same user, because that process could get access to the same X-server) can in principle access any keystroke, so any other GUI app that is running at the same time. Wayland does not have this issue. So beware what you have running!
   - Using `kptui` on a text console does enhance security.
+* When using Clear-tmux, deleting a buffer does __not__ guarantee that tmux wipes its freed memory!
 
 ### Optional Linux GUI
 The GNU/Linux `gui` feature opens the existing vault interface on native Wayland or X11, using the same configuration and vault operations.

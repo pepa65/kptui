@@ -280,7 +280,7 @@ impl Session {
 				let target = self
 					.viewport
 					.row_at(x, y)
-					.and_then(|row| field_at_position(GRID_AREA, self.app.slim_mode, column, row as u16))
+					.and_then(|row| field_at_position(GRID_AREA, self.app.slim_mode, self.app.tmux_copy(), column, row as u16))
 					.and_then(|(field, on_label)| {
 						if on_label {
 							self.app.edit_state.select(Some(field));
@@ -616,7 +616,7 @@ mod tests {
 	#[test]
 	fn entry_hit_test_distinguishes_labels_and_values() {
 		let area = Rect::new(0, 0, GRID.width, GRID.height);
-		let hit = |column, row| field_at_position(area, false, column, row);
+		let hit = |column, row| field_at_position(area, false, false, column, row);
 		assert_eq!(hit(0.0, 0), None);
 		for field in 0..5 {
 			assert_eq!(hit(0.0, field as u16 + 1), Some((field, true)));
@@ -680,12 +680,7 @@ mod tests {
 			let (pixels, stride) = canvas.pixels().map_err(anyhow::Error::msg)?;
 			assert_eq!(pixels.len(), stride * usize::from(size.height));
 			let row_end = (f64::from(CELL_HEIGHT) * viewport.scale) as usize * stride;
-			let ink = pixels[..row_end]
-				.as_chunks::<4>()
-				.0
-				.iter()
-				.filter(|pixel| u32::from_ne_bytes(**pixel) & 0x00ff_ffff != 0)
-				.count();
+			let ink = pixels[..row_end].as_chunks::<4>().0.iter().filter(|pixel| u32::from_ne_bytes(**pixel) & 0x00ff_ffff != 0).count();
 			assert!(ink > previous_ink, "Thai glyphs should gain pixels as the window grows");
 			previous_ink = ink;
 		}
