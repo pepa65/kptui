@@ -61,18 +61,29 @@ fn resolve_totp(e: &EntryRef) -> String {
 
 pub struct TotpCode {
 	pub code: Zeroizing<String>,
+	pub next: Zeroizing<String>,
 	pub valid_for: std::time::Duration,
 }
 
 pub fn current_totp_code(raw: &str) -> Option<TotpCode> {
+	totp_code_at(raw, SystemTime::now().duration_since(UNIX_EPOCH).ok()?)
+}
+
+fn totp_code_at(raw: &str, now: std::time::Duration) -> Option<TotpCode> {
 	if raw.trim().is_empty() {
 		return None;
 	}
-
 	let totp: keepass::db::TOTP = raw.parse().ok()?;
-	let otp_code = totp.value_now().ok()?;
-
-	Some(TotpCode { code: Zeroizing::new(otp_code.code), valid_for: otp_code.valid_for })
+	if totp.period == 0 {
+		return None;
+	}
+	let current = totp.value_at(now.as_secs());
+	let code = Zeroizing::new(current.code);
+	let next = Zeroizing::new(totp.value_at(now.as_secs().checked_add(current.valid_for.as_secs())?).code);
+	// The library reports whole seconds from the truncated Unix timestamp.
+	// Subtract the fractional second so the cached code expires at the boundary.
+	let valid_for = current.valid_for.saturating_sub(std::time::Duration::from_nanos(u64::from(now.subsec_nanos())));
+	Some(TotpCode { code, next, valid_for })
 }
 
 pub fn totp_edit_value(raw: &str) -> String {
@@ -421,8 +432,7 @@ mod tests {
 		let dir = TestDir::new();
 		let database_path = dir.join("notes.kdbx");
 		let (mut database, key, mut entries) =
-			create_database(&database_path, 1, &Zeroizing::new("correct horse".to_string()), None, crate::config::MIB)
-				.expect("database should be created");
+			create_database(&database_path, 1, &Zeroizing::new("correct horse".to_string()), None, crate::config::MIB).expect("database should be created");
 
 		{
 			let mut root = database.root_mut();
@@ -444,8 +454,7 @@ mod tests {
 		let dir = TestDir::new();
 		let database_path = dir.join("no-notes.kdbx");
 		let (mut database, key, mut entries) =
-			create_database(&database_path, 1, &Zeroizing::new("correct horse".to_string()), None, crate::config::MIB)
-				.expect("database should be created");
+			create_database(&database_path, 1, &Zeroizing::new("correct horse".to_string()), None, crate::config::MIB).expect("database should be created");
 
 		{
 			let mut root = database.root_mut();
@@ -546,8 +555,7 @@ mod tests {
 		let database_path = dir.join("kdf-iterations.kdbx");
 		let password = Zeroizing::new("correct horse".to_string());
 
-		let (_database, key, mut entries) =
-			create_database(&database_path, 1, &password, None, crate::config::MIB).expect("database should be created");
+		let (_database, key, mut entries) = create_database(&database_path, 1, &password, None, crate::config::MIB).expect("database should be created");
 
 		for expected_iterations in [2, 3] {
 			let (mut database, _, _) = unlock_database(&database_path, &password, None).expect("database should unlock");
@@ -571,8 +579,7 @@ mod tests {
 		let database_path = dir.join("kdf-reconcile.kdbx");
 		let password = Zeroizing::new("correct horse".to_string());
 
-		let (mut db, key, mut entries) =
-			create_database(&database_path, 1, &password, None, crate::config::MIB).expect("database should be created");
+		let (mut db, key, mut entries) = create_database(&database_path, 1, &password, None, crate::config::MIB).expect("database should be created");
 
 		let changed = super::reconcile_kdf_iterations(&database_path, &key, &mut db, &mut entries, 3).expect("KDF iterations should be reconciled");
 
@@ -608,5 +615,34 @@ mod tests {
 			assert_eq!(reopened.config.version, keepass::config::DatabaseVersion::KDB4(minor));
 			assert!(saved.is_empty());
 		}
+	}
+}
+
+#[cfg(test)]
+mod totp_display_tests {
+	use super::*;
+	use std::time::Duration;
+
+	const OTP: &str = "otpauth://totp/test?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&digits=8&period=30";
+
+	#[test]
+	fn current_and_next_codes_roll_over_at_the_period_boundary() {
+		let before = totp_code_at(OTP, Duration::from_millis(59_500)).unwrap();
+		assert_eq!(before.code.as_str(), "94287082");
+		assert_eq!(before.next.as_str(), "37359152");
+		assert_eq!(before.valid_for, Duration::from_millis(500));
+		assert_eq!(before.valid_for.as_secs(), 0);
+		let after = totp_code_at(OTP, Duration::from_secs(60)).unwrap();
+		assert_eq!(after.code.as_str(), before.next.as_str());
+		assert_eq!(after.valid_for, Duration::from_secs(30));
+	}
+
+	#[test]
+	fn next_code_uses_the_configured_period() {
+		let otp = OTP.replace("period=30", "period=7");
+		let before = totp_code_at(&otp, Duration::from_millis(13_750)).unwrap();
+		let after = totp_code_at(&otp, Duration::from_secs(14)).unwrap();
+		assert_eq!(before.valid_for, Duration::from_millis(250));
+		assert_eq!(before.next.as_str(), after.code.as_str());
 	}
 }

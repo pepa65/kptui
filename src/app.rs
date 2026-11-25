@@ -61,6 +61,7 @@ pub enum ExportStep {
 
 pub struct TotpCache {
 	pub code: Zeroizing<String>,
+	pub next: Zeroizing<String>,
 	pub expires: Instant,
 }
 

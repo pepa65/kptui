@@ -33,7 +33,8 @@
   or on Name/User/Notes (toggled by `Ctrl-f`).
 * **Hidden passwords**: In an entry, the password shows as dots until `Ctrl-r` shows it, and `Ctrl-r` hides it again.
   This works while editing the password too, and it's hidden again whenever an entry gets opened or closed.
-* **TOTP codes**: Generates live 2FA codes from a stored seed and saves `otpauth://` URI.
+* **TOTP codes**: Generates live 2FA codes (current and next, with countdown)
+  from a stored seed and saves `otpauth://` URI.
   - Editable as: `SECRET [DIGITS [PERIOD]]` (`PERIOD` defaults to `30`, and `DIGITS` to `6`)
 * **Auto-exit**: The whole app can close itself automatically after a set period of inactivity
   in seconds (`0`: stays open indefinitely).
