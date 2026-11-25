@@ -210,7 +210,9 @@ mod tests {
 				let b = split.pixels().unwrap().0;
 				let right_edge = |pixels: &[u8]| {
 					pixels
-						.chunks_exact(4)
+						.as_chunks::<4>()
+						.0
+						.iter()
 						.enumerate()
 						.filter(|(_, pixel)| pixel[..3].iter().any(|channel| *channel != 0))
 						.map(|(index, _)| (index * 4 % stride) / 4)

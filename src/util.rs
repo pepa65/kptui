@@ -108,15 +108,13 @@ mod home_tests {
 		let path = expand_tilde("~/.config/kptui/config.toml");
 		assert!(path.starts_with(std::env::temp_dir()));
 		assert_eq!(expand_tilde("~/.config/kptui/config.toml"), path);
-		let mut config = crate::config::Config::default();
-		config.kdf_iterations = 7;
+		let config = crate::config::Config { kdf_iterations: 7, ..Default::default() };
 		crate::config::save_config(&config).unwrap();
 		assert_eq!(crate::config::load_config().unwrap().kdf_iterations, 7);
 		let other = std::thread::spawn(|| {
 			let path = expand_tilde("~/.config/kptui/config.toml");
 			assert!(!path.exists());
-			let mut config = crate::config::Config::default();
-			config.kdf_iterations = 11;
+			let config = crate::config::Config { kdf_iterations: 11, ..Default::default() };
 			crate::config::save_config(&config).unwrap();
 			assert_eq!(crate::config::load_config().unwrap().kdf_iterations, 11);
 			path

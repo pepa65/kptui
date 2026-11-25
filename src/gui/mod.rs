@@ -681,8 +681,10 @@ mod tests {
 			assert_eq!(pixels.len(), stride * usize::from(size.height));
 			let row_end = (f64::from(CELL_HEIGHT) * viewport.scale) as usize * stride;
 			let ink = pixels[..row_end]
-				.chunks_exact(4)
-				.filter(|pixel| u32::from_ne_bytes((*pixel).try_into().unwrap()) & 0x00ff_ffff != 0)
+				.as_chunks::<4>()
+				.0
+				.iter()
+				.filter(|pixel| u32::from_ne_bytes(**pixel) & 0x00ff_ffff != 0)
 				.count();
 			assert!(ink > previous_ink, "Thai glyphs should gain pixels as the window grows");
 			previous_ink = ink;
