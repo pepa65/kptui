@@ -144,7 +144,7 @@ pub struct App {
 }
 
 impl App {
-	/// Whether Control-Y copies entry fields to a tmux paste buffer.
+	/// Whether Control-C copies entry fields to a tmux paste buffer.
 	pub fn tmux_copy(&self) -> bool {
 		!self.config.tmux_clear.is_zero() && crate::tmux::available()
 	}

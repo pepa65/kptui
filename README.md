@@ -39,7 +39,7 @@
 * **Auto-exit**: The whole app can close itself automatically after a set period of inactivity
   in seconds (`0`: stays open indefinitely).
 * **Themeable**: Ships with a range of themes and supports custom themes.
-* **Copy to tmux** (off by default): With `tmux_clear` set and kptui running inside tmux, `Ctrl-y` on an entry copies
+* **Copy to tmux** (off by default): With `tmux_clear` set and kptui running inside tmux, `Ctrl-c` on an entry copies
   the selected field (or the current TOTP code) to a tmux paste buffer, to paste with `prefix ]`. This also works
   while the password is hidden. tmux deletes the buffer after `tmux_clear` seconds, or earlier when kptui exits.
 * **Access Configuration from the app**: On the Login screen or the Index screen, give `Ctrl-c`:
@@ -158,7 +158,7 @@ kdf_iterations = 90  # Can be lower if less paranoid about being brute-forced
 kdf_memory = "256M"  # 256 MiB, also accepts byte count (unquoted!)
 auto_exit = 0  # Seconds of inactivity before exiting the app (0: never auto-exit)
 theme = "default"  # Theme in ~/.local/share/kptui/themes/
-tmux_clear = 0  # Seconds before tmux deletes a value copied with Ctrl-y (0: no copying to tmux)
+tmux_clear = 0  # Seconds before tmux deletes a value copied with Ctrl-c (0: no copying to tmux)
 ```
 
 All fields are optional, as the above are the default values.

@@ -41,7 +41,7 @@ pub fn handle_edit_input(app: &mut App, key: KeyEvent) {
 		KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
 			request_save(app);
 		}
-		KeyCode::Char('y') if key.modifiers.contains(KeyModifiers::CONTROL) && app.tmux_copy() => copy_selected_field(app),
+		KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) && app.tmux_copy() => copy_selected_field(app),
 		_ if is_reveal_key(&key) => {
 			app.status = None;
 			app.show_password = !app.show_password;
