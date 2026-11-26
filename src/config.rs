@@ -82,7 +82,6 @@ struct ConfigFile {
 	kdf_memory: Option<KdfMemoryValue>,
 	auto_exit: Option<u64>,
 	theme: Option<String>,
-	#[serde(rename = "clear-tmux")]
 	clear_tmux: Option<u64>,
 }
 
@@ -134,7 +133,7 @@ fn load_config_at(path: &Path, initial: &str) -> anyhow::Result<Config> {
 fn parse_config(text: &str) -> anyhow::Result<Config> {
 	let raw: ConfigFile = toml::from_str(text)?;
 	let defaults = Config::default();
-	anyhow::ensure!(raw.clear_tmux.unwrap_or(0) <= crate::tmux::MAX_CLEAR_SECONDS, "clear-tmux must be 0–86400 seconds");
+	anyhow::ensure!(raw.clear_tmux.unwrap_or(0) <= crate::tmux::MAX_CLEAR_SECONDS, "Clear-tmux must be 0–86400 seconds");
 	Ok(Config {
 		default_database: raw.database.or(raw.default_database).map(|s| expand_tilde(&s)),
 		keyfile: raw.keyfile.filter(|s| !s.is_empty()).map(|s| expand_tilde(&s)),
@@ -155,7 +154,6 @@ struct ConfigFileOut<'a> {
 	kdf_memory: KdfMemoryValue,
 	auto_exit: u64,
 	theme: Option<&'a str>,
-	#[serde(rename = "clear-tmux")]
 	clear_tmux: u64,
 }
 
@@ -320,10 +318,10 @@ mod tests {
 	#[test]
 	fn clear_tmux_is_opt_in_and_round_trips() {
 		assert!(parse_config("").unwrap().clear_tmux.is_zero());
-		let config = parse_config("clear-tmux = 30").unwrap();
+		let config = parse_config("clear_tmux = 30").unwrap();
 		assert_eq!(config.clear_tmux.as_secs(), 30);
-		assert!(serialize_config(&config).unwrap().contains("clear=tmux = 30"));
-		assert!(parse_config("clear-tmux = 86401").is_err());
+		assert!(serialize_config(&config).unwrap().contains("clear_tmux = 30"));
+		assert!(parse_config("clear_tmux = 86401").is_err());
 	}
 
 	#[test]

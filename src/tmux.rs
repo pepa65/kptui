@@ -119,7 +119,7 @@ pub struct TmuxBuffer {
 
 impl TmuxBuffer {
 	pub fn copy(&mut self, value: &str, clear_after: Duration) -> anyhow::Result<()> {
-		ensure!((1..=MAX_CLEAR_SECONDS).contains(&clear_after.as_secs()), "clear-tmux delay must be 1–86400 seconds");
+		ensure!((1..=MAX_CLEAR_SECONDS).contains(&clear_after.as_secs()), "Clear-tmux delay must be 1–86400 seconds");
 		self.clear()?;
 		let server = Server::current()?;
 		let mut random = [0u8; 16];

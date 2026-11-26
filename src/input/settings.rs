@@ -485,7 +485,7 @@ fn commit_field(app: &mut App) {
 			let secs = match parse_seconds(&value) {
 				Ok(secs) if secs <= crate::tmux::MAX_CLEAR_SECONDS => secs,
 				_ => {
-					app.status = Some("clear-tmux must be 0–86400 seconds (0 disables copying)".to_string());
+					app.status = Some("Clear-tmux must be 0–86400 seconds (0 disables copying)".to_string());
 					return;
 				}
 			};
