@@ -26,6 +26,33 @@ pub const CHANGE_PASSWORD_ROW: usize = 7;
 pub const IMPORT_ROW: usize = 8;
 pub const EXPORT_ROW: usize = 9;
 
+pub(crate) fn setting_key(row: usize) -> Option<&'static str> {
+	match row {
+		DATABASE_ROW => Some("database"),
+		KEYFILE_ROW => Some("keyfile"),
+		ITERATIONS_ROW => Some("kdf_iterations"),
+		MEMORY_ROW => Some("kdf_memory"),
+		AUTO_EXIT_ROW => Some("auto_exit"),
+		THEME_ROW => Some("theme"),
+		_ => None,
+	}
+}
+
+fn save_setting(app: &mut App, key: &str) {
+	app.status = Some(if app.config.is_recovering() {
+		match crate::config::repair_config_field(&mut app.config, key) {
+			Ok(Some(_)) => "Configuration repaired and saved; original backed up".to_string(),
+			Ok(None) => app.config.recovery_message().unwrap(),
+			Err(error) => format!("Not saved: {error:#}"),
+		}
+	} else {
+		match save_config(&app.config) {
+			Ok(()) => "saved".to_string(),
+			Err(error) => format!("couldn't save config: {error:#}"),
+		}
+	});
+}
+
 pub(crate) fn settings_row(_app: &App, visible_row: usize) -> usize {
 	visible_row
 }
@@ -109,6 +136,10 @@ pub fn handle_settings_input(app: &mut App, key: KeyEvent) {
 
 		KeyCode::Esc => {
 			app.status = None;
+			if app.config.is_recovering() {
+				app.should_quit = true;
+				return;
+			}
 			if app.login_settings {
 				// Return to Login without exiting the application.
 				app.screen = Screen::Login;
@@ -391,10 +422,7 @@ fn commit_field(app: &mut App) {
 				Some(path)
 			};
 			app.config.keyfile = keyfile;
-			app.status = Some(match save_config(&app.config) {
-				Ok(()) => "keyfile configuration saved".to_string(),
-				Err(err) => format!("couldn't save config: {err}"),
-			});
+			save_setting(app, "keyfile");
 			return;
 		}
 
@@ -449,10 +477,9 @@ fn commit_field(app: &mut App) {
 		_ => return,
 	}
 
-	app.status = Some(match save_config(&app.config) {
-		Ok(()) => "saved".to_string(),
-		Err(err) => format!("couldn't save config: {err}"),
-	});
+	if let Some(key) = setting_key(selected) {
+		save_setting(app, key);
+	}
 }
 
 fn parse_kdf_iterations(value: &str) -> Result<u64, String> {
@@ -905,10 +932,7 @@ fn apply_selected_theme(app: &mut App) {
 			app.theme = theme;
 			app.config.theme = Some(crate::theme::slugify(&name));
 
-			app.status = Some(match save_config(&app.config) {
-				Ok(()) => format!("theme set to {name}"),
-				Err(err) => format!("theme applied, but couldn't save config: {err}"),
-			});
+			save_setting(app, "theme");
 		}
 
 		Err(err) => {
@@ -1101,5 +1125,69 @@ mod memory_setting_tests {
 			_ => panic!("expected Argon2"),
 		}
 		std::fs::remove_file(path).unwrap();
+	}
+}
+
+#[cfg(test)]
+mod recovery_tests {
+	use super::*;
+	use zeroize::Zeroizing;
+
+	#[test]
+	fn recovery_can_correct_every_config_field_including_theme() {
+		let path = crate::util::expand_tilde("~/.config/kptui/config.toml");
+		std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+		let original = "database = 1\nkeyfile = 2\nkdf_iterations = -3\nkdf_memory = \"bad\"\nauto_exit = -1\ntheme = 7\n";
+		std::fs::write(&path, original).unwrap();
+		let mut app = crate::app::try_start(false, Zeroizing::new(String::new())).unwrap();
+		for (row, value) in [
+			(DATABASE_ROW, "/keep/vault.kdbx"),
+			(KEYFILE_ROW, ""),
+			(ITERATIONS_ROW, "5"),
+			(MEMORY_ROW, "1"),
+			(AUTO_EXIT_ROW, "0"),
+		] {
+			app.settings_state.select(Some(row));
+			handle_settings_input(&mut app, KeyEvent::from(KeyCode::Enter));
+			app.field_editor = Some(FieldEditor::with_text(value));
+			handle_settings_input(&mut app, KeyEvent::from(KeyCode::Enter));
+			assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+		}
+		app.settings_state.select(Some(THEME_ROW));
+		handle_settings_input(&mut app, KeyEvent::from(KeyCode::Enter));
+		assert!(app.choosing_theme);
+		handle_settings_input(&mut app, KeyEvent::from(KeyCode::Enter));
+		assert!(!app.config.is_recovering());
+		assert!(crate::config::load_config().unwrap().theme.is_some());
+	}
+
+	#[test]
+	fn configuration_edits_repair_values_without_saving_early() {
+		let path = crate::util::expand_tilde("~/.config/kptui/config.toml");
+		std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+		let original = "auto_exit = -1\nkdf_memory = \"bad\"\n";
+		std::fs::write(&path, original).unwrap();
+		let mut app = crate::app::try_start(false, Zeroizing::new(String::new())).unwrap();
+		let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(96, 26)).unwrap();
+		let frame = terminal
+			.draw(|frame| {
+				crate::app::draw(frame, &mut app);
+			})
+			.unwrap();
+		let rendered: String = frame.buffer.content.iter().map(|cell| cell.symbol()).collect();
+		assert!(rendered.contains("(invalid, [Enter] to correct)"));
+		for (row, value) in [(AUTO_EXIT_ROW, "17"), (MEMORY_ROW, "2")] {
+			app.settings_state.select(Some(row));
+			handle_settings_input(&mut app, KeyEvent::from(KeyCode::Enter));
+			app.field_editor = Some(FieldEditor::with_text(value));
+			handle_settings_input(&mut app, KeyEvent::from(KeyCode::Enter));
+			if row == AUTO_EXIT_ROW {
+				assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+			}
+		}
+		assert!(!app.config.is_recovering());
+		assert_eq!(crate::config::load_config().unwrap().auto_exit.as_secs(), 17);
+		handle_settings_input(&mut app, KeyEvent::from(KeyCode::Esc));
+		assert!(app.screen == Screen::Login && !app.should_quit);
 	}
 }

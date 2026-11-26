@@ -1,7 +1,5 @@
 use std::path::PathBuf;
 
-const VAULT: &str = "~/.local/share/kptui/default.kdbx";
-
 fn strip_surrounding_quotes(path: &str) -> &str {
 	let bytes = path.as_bytes();
 
@@ -29,7 +27,21 @@ pub fn expand_tilde(path: &str) -> PathBuf {
 }
 
 pub fn default_new_database_path() -> PathBuf {
-	expand_tilde(VAULT)
+	database_path_for_config(&crate::config::config_name())
+}
+
+fn database_path_for_config(name: &str) -> PathBuf {
+	let name = if name == "config" { "default" } else { name };
+	expand_tilde("~/.local/share/kptui").join(format!("{name}.kdbx"))
+}
+
+#[cfg(test)]
+mod database_path_tests {
+	#[test]
+	fn named_configs_have_separate_default_vaults() {
+		assert_eq!(super::database_path_for_config("work"), super::expand_tilde("~/.local/share/kptui/work.kdbx"));
+		assert_eq!(super::database_path_for_config("config"), super::expand_tilde("~/.local/share/kptui/default.kdbx"));
+	}
 }
 
 pub fn wrap_help_items(items: &[&str], width: u16) -> Vec<String> {

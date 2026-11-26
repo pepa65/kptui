@@ -286,7 +286,7 @@ pub fn draw_edit(frame: &mut Frame, app: &mut App) -> Option<EditView> {
 	let label_style = Style::new().fg(theme.header).bold();
 	let normal = Style::new().fg(theme.text);
 	let warning = Style::new().fg(theme.warning);
-	let placeholder = Style::new().fg(theme.text).bold();
+	let placeholder = warning;
 	let editing_style = Style::new().fg(theme.selection_fg).bg(theme.selection_bg);
 	let accent_style = Style::new().fg(theme.selection_fg).bg(theme.accent);
 	let help_items = if editing_field {

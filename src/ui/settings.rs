@@ -11,7 +11,7 @@ use ratatui::{
 use super::edit::EditView;
 use crate::app::{App, ExportStep, ImportStep};
 use crate::input::fieldedit::FieldEditor;
-use crate::input::settings::{AUTO_EXIT_ROW, LOCKED_ROW_COUNT, UNLOCKED_ROW_COUNT, format_save_target, settings_row};
+use crate::input::settings::{AUTO_EXIT_ROW, LOCKED_ROW_COUNT, UNLOCKED_ROW_COUNT, format_save_target, setting_key, settings_row};
 use crate::util::wrap_help_items;
 use unicode_width::UnicodeWidthStr;
 
@@ -69,7 +69,13 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 	let editing_field = app.editing_field;
 	let selected = settings_row(app, app.settings_state.selected().unwrap_or(0));
 
-	let help_items = if editing_field { field_help_items(app.slim_mode) } else { nav_help_items(app.slim_mode) };
+	let help_items = if editing_field {
+		field_help_items(app.slim_mode)
+	} else if app.config.is_recovering() {
+		&["[Enter] Correct setting", "[Esc] Quit"]
+	} else {
+		nav_help_items(app.slim_mode)
+	};
 
 	let help_width = full_area.width;
 	let help_lines = wrap_help_items(help_items, help_width);
@@ -84,7 +90,6 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 	let normal = Style::new().fg(theme.text);
 	let accent = Style::new().fg(theme.accent);
 	let warning = Style::new().fg(theme.warning);
-	let placeholder = Style::new().fg(theme.text).bold();
 	let editing_style = Style::new().fg(theme.selection_fg).bg(theme.selection_bg);
 	let label_style = Style::new().fg(theme.header).bold();
 	let format_label = format!("Save as {}", format_save_target(app));
@@ -102,14 +107,14 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 	];
 
 	let path_value =
-		|path: Option<&std::path::Path>| path.map_or_else(|| Span::styled("(not set)", placeholder), |path| Span::styled(path.display().to_string(), normal));
+		|path: Option<&std::path::Path>| path.map_or_else(|| Span::styled("(not set)", warning), |path| Span::styled(path.display().to_string(), normal));
 	let theme_value = if app.available_themes.is_empty() {
 		Span::styled("no themes found in ~/.config/kptui/themes", warning)
 	} else if let Some(configured) = &app.config.theme {
 		let name = app.available_themes.iter().find(|name| crate::theme::slugify(name) == *configured).unwrap_or(configured);
 		Span::styled(name.as_str(), normal)
 	} else {
-		Span::styled("(not set)", placeholder)
+		Span::styled("(not set)", warning)
 	};
 	let values = [
 		path_value(app.config.default_database.as_deref()),
@@ -118,14 +123,19 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 		Span::styled((app.config.kdf_memory as f64 / crate::config::MIB as f64).to_string(), normal),
 		Span::styled(app.config.auto_exit.as_secs().to_string(), normal),
 		theme_value,
-		Span::styled("[Enter] to save", placeholder),
-		Span::styled("[Enter] to change", placeholder),
-		Span::styled("[Enter] to import", placeholder),
-		Span::styled("[Enter] to export", placeholder),
+		Span::styled("([Enter] to save)", warning),
+		Span::styled("([Enter] to change)", warning),
+		Span::styled("([Enter] to import)", warning),
+		Span::styled("([Enter] to export)", warning),
 	];
 	let row_count = if app.login_settings { LOCKED_ROW_COUNT } else { UNLOCKED_ROW_COUNT };
 	let items = labels.into_iter().zip(values).enumerate().take(row_count).map(|(row, (label, value))| {
 		let style = if selected == row { editing_style } else { label_style };
+		let value = if setting_key(row).is_some_and(|key| app.config.field_invalid(key)) {
+			Span::styled("(invalid, [Enter] to correct)", warning)
+		} else {
+			value
+		};
 		ListItem::new(Line::from(vec![Span::styled(label, style), Span::styled(": ", normal), value]))
 	});
 
@@ -162,9 +172,10 @@ fn draw_main_settings(frame: &mut Frame, app: &mut App) {
 
 	let help = if let Some(status) = &app.status {
 		Paragraph::new(status.as_str()).style(warning)
+	} else if let Some(message) = app.config.recovery_message() {
+		Paragraph::new(message).style(warning)
 	} else {
 		let help_text = help_lines.join("\n");
-
 		Paragraph::new(help_text).style(accent)
 	};
 

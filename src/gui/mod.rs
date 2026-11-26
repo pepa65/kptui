@@ -89,7 +89,7 @@ impl Session {
 		let viewport = Viewport::new(size);
 		Ok(Self {
 			readme: readme.then(|| crate::readme::Pager::new(GRID.width)),
-			app: app::start(false, Zeroizing::new(String::with_capacity(SECRET_CAP))),
+			app: app::try_start(false, Zeroizing::new(String::with_capacity(SECRET_CAP)))?,
 			terminal: Terminal::new(FrameBackend::default())?,
 			canvas: Canvas::new(&viewport).map_err(anyhow::Error::msg)?,
 			viewport,

@@ -153,7 +153,7 @@ keyfile = "~/.local/share/kptui/default.keyx"  # Optional (empty for password-on
 kdf_iterations = 90  # Can be lower if less paranoid about being brute-forced
 kdf_memory = "256M"  # 256 MiB, also accepts byte count (unquoted!)
 auto_exit = 0  # Seconds of inactivity before exiting the app (0: never auto-exit)
-theme = "default"  # Theme in ~/.local/share/kptui/themes/
+theme = "default"  # Theme in ~/.local/share/kptui/themes/  # Optional
 ```
 
 All fields are optional, as the above are the default values.
