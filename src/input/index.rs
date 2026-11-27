@@ -3,6 +3,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use crate::app::App;
 use crate::input::command::{handle_shortcut, preview_entry};
 use crate::input::{secret_pop, secret_push};
+use zeroize::Zeroize;
 
 fn start_delete_confirmation(app: &mut App, index: usize) {
 	if index >= app.entries.len() {
@@ -51,12 +52,13 @@ fn delete_index_entry(app: &mut App, index: usize) {
 }
 
 fn move_selection_to(app: &mut App, selected: usize) {
-	if app.filtered.is_empty() {
+	let row_count = app.row_count();
+	if row_count == 0 {
 		return;
 	}
 
 	app.status = None;
-	app.index_state.select(Some(selected.min(app.filtered.len() - 1)));
+	app.index_state.select(Some(selected.min(row_count - 1)));
 }
 
 pub fn handle_index_input(app: &mut App, key: KeyEvent) {
@@ -69,10 +71,10 @@ pub fn handle_index_input(app: &mut App, key: KeyEvent) {
 		if let KeyCode::Char(c) = key.code {
 			app.status = None;
 			if c.eq_ignore_ascii_case(&'d') {
-				if let Some(selected) = app.index_state.selected()
-					&& let Some(&index) = app.filtered.get(selected)
-				{
+				if let Some(index) = app.selected_entry() {
 					start_delete_confirmation(app, index);
+				} else if app.selected_group().is_some() {
+					app.status = Some("Groups can't be deleted in kptui".to_string());
 				}
 			} else if c.eq_ignore_ascii_case(&'f') {
 				app.search_notes = !app.search_notes;
@@ -102,7 +104,34 @@ pub fn handle_index_input(app: &mut App, key: KeyEvent) {
 
 		KeyCode::Enter => {
 			app.status = None;
-			preview_entry(app);
+			match app.selected_group() {
+				Some(group) => app.enter_group(group),
+				None => preview_entry(app),
+			}
+		}
+
+		KeyCode::Right => {
+			if let Some(group) = app.selected_group() {
+				app.status = None;
+				app.enter_group(group);
+			}
+		}
+
+		// With groups, Esc first clears the search, then goes up a level, then quits.
+		KeyCode::Esc if !app.groups.is_empty() && !app.query.is_empty() => {
+			app.status = None;
+			app.query.zeroize();
+			app.refresh_filter();
+		}
+
+		KeyCode::Esc if app.group.is_some() => {
+			app.status = None;
+			app.leave_group();
+		}
+
+		KeyCode::Left if app.query.is_empty() => {
+			app.status = None;
+			app.leave_group();
 		}
 
 		KeyCode::Esc => {
@@ -110,7 +139,7 @@ pub fn handle_index_input(app: &mut App, key: KeyEvent) {
 		}
 
 		KeyCode::Down => {
-			let row_count = app.filtered.len();
+			let row_count = app.row_count();
 
 			if row_count == 0 {
 				return;
@@ -126,7 +155,7 @@ pub fn handle_index_input(app: &mut App, key: KeyEvent) {
 		}
 
 		KeyCode::Up => {
-			let row_count = app.filtered.len();
+			let row_count = app.row_count();
 
 			if row_count == 0 {
 				return;
@@ -142,7 +171,7 @@ pub fn handle_index_input(app: &mut App, key: KeyEvent) {
 		}
 
 		KeyCode::PageDown => {
-			let row_count = app.filtered.len();
+			let row_count = app.row_count();
 			if row_count == 0 {
 				return;
 			}
@@ -154,7 +183,7 @@ pub fn handle_index_input(app: &mut App, key: KeyEvent) {
 		}
 
 		KeyCode::PageUp => {
-			let row_count = app.filtered.len();
+			let row_count = app.row_count();
 			if row_count == 0 {
 				return;
 			}
@@ -169,8 +198,8 @@ pub fn handle_index_input(app: &mut App, key: KeyEvent) {
 			move_selection_to(app, 0);
 		}
 
-		KeyCode::End if !app.filtered.is_empty() => {
-			move_selection_to(app, app.filtered.len() - 1);
+		KeyCode::End if app.row_count() > 0 => {
+			move_selection_to(app, app.row_count() - 1);
 		}
 
 		_ => {}

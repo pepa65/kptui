@@ -12,8 +12,11 @@ pub fn handle_shortcut(app: &mut App, c: char) {
 }
 
 fn new_entry(app: &mut App) {
-	app.edit_entry = Some(Entry::default());
-	app.edit_original = Some(Entry::default());
+	// New entries go into the group being browsed.
+	let mut entry = Entry::default();
+	entry.group = app.group;
+	app.edit_original = Some(entry.clone());
+	app.edit_entry = Some(entry);
 	app.edit_target = None;
 	app.edit_state.select(Some(0));
 	app.field_editor = Some(FieldEditor::with_text(""));
@@ -25,11 +28,7 @@ fn new_entry(app: &mut App) {
 }
 
 pub fn preview_entry(app: &mut App) {
-	let Some(selected) = app.index_state.selected() else {
-		return;
-	};
-
-	let Some(&entry_idx) = app.filtered.get(selected) else {
+	let Some(entry_idx) = app.selected_entry() else {
 		return;
 	};
 

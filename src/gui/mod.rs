@@ -253,8 +253,11 @@ impl Session {
 					let first_row = usize::from(SEARCH_HEIGHT + header_height(self.app.slim_mode));
 					let row = self.viewport.row_at(x, y).and_then(|row| row.checked_sub(first_row));
 					let selected = row.filter(|&row| row < self.app.index_page_size).map(|row| self.app.index_state.offset() + row);
-					let click = selected.and_then(|row| self.app.filtered.get(row).map(|&entry| (row, entry)));
-					let open = double_click(&mut self.last_click, click.map(|(_, entry)| ClickTarget::Entry(entry)), time);
+					let click = selected.filter(|&row| row < self.app.row_count()).map(|row| match self.app.group_rows.get(row) {
+						Some(&group) => (row, ClickTarget::Group(group)),
+						None => (row, ClickTarget::Entry(self.app.filtered[row - self.app.group_rows.len()])),
+					});
+					let open = double_click(&mut self.last_click, click.map(|(_, target)| target), time);
 					if let Some((row, _)) = click {
 						self.app.last_activity = Instant::now();
 						self.app.index_state.select(Some(row));
@@ -411,6 +414,7 @@ impl ReadonlySelection {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ClickTarget {
 	Entry(usize),
+	Group(usize),
 	Readonly(ReadonlyTarget),
 }
 

@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event, KeyEvent};
+use keepass::db::GroupId;
 use keepass::{Database, DatabaseKey};
 use ratatui::{
 	Frame, Terminal,
@@ -14,6 +15,7 @@ use zeroize::{Zeroize, Zeroizing};
 
 use crate::config::{Config, load_config};
 use crate::db::Entry;
+use crate::groups::GroupInfo;
 use crate::input::SECRET_CAP;
 use crate::input::edit::{handle_edit_input, process_pending_save};
 use crate::input::fieldedit::FieldEditor;
@@ -101,7 +103,14 @@ pub struct App {
 	/// Whether the password of the open entry is shown (Control-R), instead of dots.
 	pub show_password: bool,
 	pub entries: Vec<Entry>,
+	/// The entries on the Index, below `group_rows`.
 	pub filtered: Vec<usize>,
+	/// All groups below the root group.
+	pub groups: Vec<GroupInfo>,
+	/// The group being browsed (`None`: the root group).
+	pub group: Option<GroupId>,
+	/// The subgroups on the Index, above the entries, as indices into `groups`.
+	pub group_rows: Vec<usize>,
 	pub kdbx: Option<Database>,
 	pub db_key: Option<DatabaseKey>,
 	pub theme: Theme,
@@ -155,8 +164,10 @@ impl App {
 			.iter()
 			.enumerate()
 			.filter(|(_, entry)| {
-				query.is_empty()
-					|| Zeroizing::new(entry.name.to_lowercase()).contains(query.as_str())
+				if query.is_empty() {
+					return entry.group == self.group;
+				}
+				Zeroizing::new(entry.name.to_lowercase()).contains(query.as_str())
 					|| Zeroizing::new(entry.user.to_lowercase()).contains(query.as_str())
 					|| (self.search_notes && Zeroizing::new(entry.notes.to_lowercase()).contains(query.as_str()))
 			})
@@ -175,10 +186,64 @@ impl App {
 	}
 
 	pub fn refresh_filter(&mut self) {
+		self.groups = self.kdbx.as_ref().map(crate::groups::groups_of).unwrap_or_default();
+		if self.group.is_some_and(|id| !self.groups.iter().any(|group| group.id == id)) {
+			self.group = None;
+		}
+		// Searching covers all groups, so subgroups only show when browsing.
+		self.group_rows = if self.query.is_empty() { crate::groups::children(&self.groups, self.group) } else { Vec::new() };
 		self.filtered = self.compute_filtered();
 
-		let count = self.filtered.len();
+		let count = self.row_count();
 		self.index_state.select(if count == 0 { None } else { Some(0) });
+	}
+
+	/// The number of rows on the Index: subgroups, then entries.
+	pub fn row_count(&self) -> usize {
+		self.group_rows.len() + self.filtered.len()
+	}
+
+	/// The group on the selected Index row, as an index into `groups`.
+	pub fn selected_group(&self) -> Option<usize> {
+		self.group_rows.get(self.index_state.selected()?).copied()
+	}
+
+	/// The entry on the selected Index row, as an index into `entries`.
+	pub fn selected_entry(&self) -> Option<usize> {
+		let row = self.index_state.selected()?.checked_sub(self.group_rows.len())?;
+		self.filtered.get(row).copied()
+	}
+
+	/// The Index row showing an entry.
+	pub fn row_of_entry(&self, entry: usize) -> Option<usize> {
+		self.filtered.iter().position(|&index| index == entry).map(|position| position + self.group_rows.len())
+	}
+
+	/// The path of a group, like `/Internet/Email`.
+	pub fn group_path(&self, group: Option<GroupId>) -> String {
+		crate::groups::path(&self.groups, group)
+	}
+
+	/// Starts browsing a group (an index into `groups`).
+	pub fn enter_group(&mut self, index: usize) {
+		if let Some(group) = self.groups.get(index) {
+			self.group = Some(group.id);
+			self.refresh_filter();
+		}
+	}
+
+	/// Goes up to the parent group, selecting the group it came from.
+	/// Returns false in the root group.
+	pub fn leave_group(&mut self) -> bool {
+		let Some(current) = self.group else {
+			return false;
+		};
+		self.group = self.groups.iter().find(|group| group.id == current).and_then(|group| group.parent);
+		self.refresh_filter();
+		if let Some(row) = self.group_rows.iter().position(|&index| self.groups[index].id == current) {
+			self.index_state.select(Some(row));
+		}
+		true
 	}
 }
 
@@ -261,6 +326,9 @@ pub fn try_start(slim_mode: bool, password: Zeroizing<String>) -> anyhow::Result
 		show_password: false,
 		entries: Vec::new(),
 		filtered: Vec::new(),
+		groups: Vec::new(),
+		group: None,
+		group_rows: Vec::new(),
 		kdbx: None,
 		db_key: None,
 		creating_database: false,

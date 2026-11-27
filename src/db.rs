@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
 use keepass::config::DatabaseVersion;
-use keepass::db::{EntryId, EntryMut, EntryRef, Times, fields};
+use keepass::db::{EntryId, EntryMut, EntryRef, GroupId, Times, fields};
 use keepass::{Database, DatabaseKey};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
@@ -178,6 +178,9 @@ fn urlencoding_encode(input: &str) -> String {
 pub struct Entry {
 	#[zeroize(skip)]
 	pub id: Option<EntryId>,
+	/// The group it's in (`None`: the root group).
+	#[zeroize(skip)]
+	pub group: Option<GroupId>,
 	pub name: String,
 	pub user: String,
 	pub password: String,
@@ -196,13 +199,19 @@ pub fn unlock_database(path: &Path, password: &Zeroizing<String>, keyfile_path: 
 		None => anyhow::anyhow!("unlock failed with password: {err}"),
 	})?;
 
-	let entries = db
-		.iter_all_entries()
+	let entries = entries_of(&db);
+	Ok((db, key, entries))
+}
+
+pub fn entries_of(db: &Database) -> Vec<Entry> {
+	let groups = crate::groups::entry_groups(db);
+	db.iter_all_entries()
 		.map(|e| {
 			let date_last_modify = e.times.last_modification.map(|dt| dt.strftime("%Y-%m-%d %H:%M:%S").to_string()).unwrap_or_default();
 
 			Entry {
 				id: Some(e.id()),
+				group: groups.get(&e.id()).copied(),
 				name: e.get_title().unwrap_or("(no title)").to_string(),
 				user: e.get_username().unwrap_or_default().to_string(),
 				password: e.get_password().unwrap_or_default().to_string(),
@@ -212,9 +221,7 @@ pub fn unlock_database(path: &Path, password: &Zeroizing<String>, keyfile_path: 
 				date_last_modify,
 			}
 		})
-		.collect();
-
-	Ok((db, key, entries))
+		.collect()
 }
 
 pub fn create_database(
@@ -324,10 +331,14 @@ fn write_entry(db: &mut Database, entry: &mut Entry) -> anyhow::Result<()> {
 			entry.date_last_modify = e.times.last_modification.map(|dt| dt.strftime("%Y-%m-%d %H:%M:%S").to_string()).unwrap_or_default();
 		}
 		None => {
-			let mut root = db.root_mut();
-			let mut e = root.add_entry();
+			// Into its group, or the root group if that's gone.
+			let group = entry.group.filter(|&group| db.group(group).is_some());
+			let target = group.unwrap_or_else(|| db.root().id());
+			let mut parent = db.group_mut(target).context("the group no longer exists in the database")?;
+			let mut e = parent.add_entry();
 			apply_fields(&mut e, entry);
 			entry.id = Some(e.id());
+			entry.group = group;
 			entry.date_last_modify = e.times.last_modification.map(|dt| dt.strftime("%Y-%m-%d %H:%M:%S").to_string()).unwrap_or_default();
 		}
 	}
@@ -362,8 +373,8 @@ fn sibling_tmp_path(path: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-	use super::{build_database_key, create_database, reconcile_kdf_iterations, save_database, unlock_database};
-	use keepass::db::fields;
+	use super::{Entry, build_database_key, create_database, reconcile_kdf_iterations, save_database, unlock_database};
+	use keepass::db::{GroupId, fields};
 	use std::fs;
 	use std::path::{Path, PathBuf};
 	use std::sync::atomic::{AtomicU64, Ordering};
@@ -468,6 +479,36 @@ mod tests {
 		let entry = entries.iter().find(|entry| entry.name == "Entry without notes").expect("entry should be loaded");
 
 		assert!(entry.notes.is_empty());
+	}
+
+	#[test]
+	fn new_entries_are_saved_in_their_group() {
+		let dir = TestDir::new();
+		let database_path = dir.join("groups.kdbx");
+		let password = Zeroizing::new("correct horse".to_string());
+		let (mut database, key, _) = create_database(&database_path, 1, &password, None, crate::config::MIB).expect("database should be created");
+		let group = {
+			let mut root = database.root_mut();
+			let mut group = root.add_group();
+			group.name = "Email".to_string();
+			group.id()
+		};
+
+		let entry = |name: &str, group| {
+			let mut entry = Entry::default();
+			entry.name = name.to_string();
+			entry.group = group;
+			entry
+		};
+		let mut entries = vec![entry("Gmail", Some(group)), entry("Router", None), entry("Orphan", Some(GroupId::new()))];
+		save_database(&database_path, &key, &mut database, &mut entries).expect("database should be saved");
+		assert_eq!(entries[2].group, None, "an entry for a missing group goes to the root group");
+
+		let (_, _, entries) = unlock_database(&database_path, &password, None).expect("database should unlock");
+		let group_of = |name: &str| entries.iter().find(|entry| entry.name == name).expect("entry should be loaded").group;
+		assert_eq!(group_of("Gmail"), Some(group));
+		assert_eq!(group_of("Router"), None);
+		assert_eq!(group_of("Orphan"), None);
 	}
 
 	#[test]
